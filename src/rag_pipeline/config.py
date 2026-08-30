@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     reranker_batch_size: int = 32
 
     generation_model: str = "gpt-5.6-terra"
+    # Deliberately the same default as generation_model for now (a single
+    # deliberate choice, not an accidental duplication) -- kept as its own
+    # setting so the judge model can be tuned independently later.
+    citation_judge_model: str = "gpt-5.6-terra"
 
     @model_validator(mode="after")
     def _validate_chunking_config(self) -> Settings:
@@ -123,6 +127,8 @@ class Settings(BaseSettings):
     def _validate_generation_config(self) -> Settings:
         if not self.generation_model.strip():
             raise ValueError("generation_model must not be empty.")
+        if not self.citation_judge_model.strip():
+            raise ValueError("citation_judge_model must not be empty.")
         return self
 
     @property

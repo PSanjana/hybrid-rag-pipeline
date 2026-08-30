@@ -4,15 +4,33 @@ from __future__ import annotations
 
 import pytest
 
+from rag_pipeline.config import ChunkingStrategy
 from rag_pipeline.generation.citations import (
     extract_citations,
     resolve_citation,
     validate_citations,
+    validate_evidence_numbering,
 )
 from rag_pipeline.generation.context import build_evidence
 from rag_pipeline.generation.exceptions import CitationValidationError
+from rag_pipeline.generation.models import Evidence
 
 from .conftest import make_reranked_result
+
+
+def _make_evidence(citation_number: object, chunk_id: str = "a") -> Evidence:
+    return Evidence(
+        citation_number=citation_number,  # type: ignore[arg-type]
+        chunk_id=chunk_id,
+        text=f"text for {chunk_id}",
+        source_file="doc.md",
+        document_id="d" * 64,
+        chunk_index=0,
+        section_heading=None,
+        page_number=None,
+        chunking_strategy=ChunkingStrategy.RECURSIVE,
+        reranked_rank=1,
+    )
 
 
 def test_single_citation_extracted() -> None:
@@ -93,3 +111,78 @@ def test_resolve_citation_rejects_out_of_range_number() -> None:
     evidence = build_evidence(results)
     with pytest.raises(CitationValidationError):
         resolve_citation(evidence, 2)
+
+
+# --- evidence-numbering validation --------------------------------------------------
+
+
+def test_validate_evidence_numbering_accepts_well_formed_sequence() -> None:
+    evidence = (_make_evidence(1, "a"), _make_evidence(2, "b"), _make_evidence(3, "c"))
+    by_number = validate_evidence_numbering(evidence)
+    assert by_number[1].chunk_id == "a"
+    assert by_number[2].chunk_id == "b"
+    assert by_number[3].chunk_id == "c"
+
+
+def test_validate_evidence_numbering_accepts_empty_sequence() -> None:
+    assert validate_evidence_numbering(()) == {}
+
+
+def test_validate_evidence_numbering_rejects_duplicate_citation_numbers() -> None:
+    evidence = (_make_evidence(1, "a"), _make_evidence(1, "b"))
+    with pytest.raises(CitationValidationError):
+        validate_evidence_numbering(evidence)
+
+
+def test_validate_evidence_numbering_rejects_gap() -> None:
+    evidence = (_make_evidence(1, "a"), _make_evidence(3, "b"))
+    with pytest.raises(CitationValidationError):
+        validate_evidence_numbering(evidence)
+
+
+def test_validate_evidence_numbering_rejects_missing_leading_number() -> None:
+    evidence = (_make_evidence(2, "a"), _make_evidence(3, "b"))
+    with pytest.raises(CitationValidationError):
+        validate_evidence_numbering(evidence)
+
+
+def test_validate_evidence_numbering_rejects_wrong_order() -> None:
+    evidence = (_make_evidence(2, "a"), _make_evidence(1, "b"))
+    with pytest.raises(CitationValidationError):
+        validate_evidence_numbering(evidence)
+
+
+def test_validate_evidence_numbering_rejects_zero() -> None:
+    evidence = (_make_evidence(0, "a"),)
+    with pytest.raises(CitationValidationError):
+        validate_evidence_numbering(evidence)
+
+
+def test_validate_evidence_numbering_rejects_negative() -> None:
+    evidence = (_make_evidence(-1, "a"),)
+    with pytest.raises(CitationValidationError):
+        validate_evidence_numbering(evidence)
+
+
+def test_validate_evidence_numbering_rejects_non_integer() -> None:
+    evidence = (_make_evidence("1", "a"),)
+    with pytest.raises(CitationValidationError):
+        validate_evidence_numbering(evidence)
+
+
+def test_validate_evidence_numbering_rejects_bool_masquerading_as_int() -> None:
+    evidence = (_make_evidence(True, "a"),)
+    with pytest.raises(CitationValidationError):
+        validate_evidence_numbering(evidence)
+
+
+def test_resolve_citation_rejects_duplicate_citation_numbers_without_leaking_key_error() -> None:
+    evidence = (_make_evidence(1, "a"), _make_evidence(1, "b"))
+    with pytest.raises(CitationValidationError):
+        resolve_citation(evidence, 1)
+
+
+def test_resolve_citation_rejects_malformed_evidence_ordering() -> None:
+    evidence = (_make_evidence(2, "a"), _make_evidence(1, "b"))
+    with pytest.raises(CitationValidationError):
+        resolve_citation(evidence, 1)

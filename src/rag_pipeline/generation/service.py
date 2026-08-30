@@ -29,21 +29,9 @@ from .exceptions import (
     UncitedAnswerError,
 )
 from .models import GroundedAnswer
-from .prompt import SYSTEM_PROMPT, build_user_prompt
+from .prompt import SYSTEM_PROMPT, build_user_prompt, is_insufficient_evidence_answer
 
 logger = logging.getLogger(__name__)
-
-# Must stay in sync with rule 6 of `prompt.SYSTEM_PROMPT` -- a literal,
-# case-insensitive substring match, not a semantic/LLM judgment. This is
-# deliberately narrow: it only recognizes the exact response form the
-# system prompt asks the model to use when evidence is insufficient, and
-# is not a general-purpose confidence/abstention system (see module and
-# package docstrings).
-_INSUFFICIENT_EVIDENCE_MARKER = "the supplied documents do not provide enough information"
-
-
-def _is_explicit_insufficient_evidence_response(answer_text: str) -> bool:
-    return _INSUFFICIENT_EVIDENCE_MARKER in answer_text.lower()
 
 
 def generate_grounded_answer(
@@ -88,11 +76,7 @@ def generate_grounded_answer(
     cited_numbers = extract_citations(answer_text)
     validate_citations(cited_numbers, len(evidence))
 
-    if (
-        evidence
-        and not cited_numbers
-        and not _is_explicit_insufficient_evidence_response(answer_text)
-    ):
+    if evidence and not cited_numbers and not is_insufficient_evidence_answer(answer_text):
         raise UncitedAnswerError(
             "Generated answer contains no bracket citations despite supplied evidence, and "
             "is not the explicit insufficient-evidence response form."

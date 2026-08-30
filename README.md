@@ -125,6 +125,30 @@ configurable chunking:
   confidence/abstention system (see Roadmap). A retrieval failure during
   `retrieve_and_generate()` is surfaced, never silently answered without
   evidence.
+- Semantically verifies citations with an **LLM judge**:
+  `verify_grounded_answer()` extracts every citation *occurrence* from a
+  `GroundedAnswer` (deterministic regex, not an LLM — a repeated `[1]`
+  is a separate occurrence each time it appears, judged independently),
+  builds a judge-only annotated copy of the answer with each occurrence
+  marked (`<occurrence id="N">[k]</occurrence>` — the user-facing answer
+  is never altered), and asks a `CitationJudge` (default: OpenAI Chat
+  Completions structured outputs, `CITATION_JUDGE_MODEL`) whether the
+  cited evidence actually supports the associated claim. Each occurrence
+  gets exactly one verdict — `SUPPORTED`, `PARTIALLY_SUPPORTED`,
+  `UNSUPPORTED`, or `CONTRADICTED` — never a numeric/probability score.
+  The judge's raw output is never trusted blindly: a
+  `CitationVerificationReport` is only built after strictly validating
+  that the judge returned exactly one well-formed result per expected
+  occurrence (rejecting missing/duplicate/extra occurrences, a wrong
+  citation number, an invalid verdict, or an empty rationale). The
+  judge's system prompt explicitly frames the answer and evidence as
+  untrusted data, not instructions. Verification is read-only — it
+  never rewrites the answer, adds/removes citations, or reorders
+  evidence — and its derived counts/`all_supported` are a **factual
+  tally of verdicts, not a calibrated confidence score or an
+  accept/reject policy** (that's a later phase). The fixed
+  insufficient-evidence response has zero citations, so it gets an
+  empty report without ever calling the judge.
 
 **Chunking strategies, conceptually:**
 - *Fixed*: slices raw character windows on a fixed stride, so overlap between
@@ -138,11 +162,10 @@ configurable chunking:
   a topic change), with a hard size cap so one uniform section can't grow
   unbounded. Requires `OPENAI_API_KEY`.
 
-**Not yet implemented:** OCR for scanned/image-only PDFs, citation
-*semantic* verification (an LLM/other judge checking a citation actually
-supports its claim), confidence scoring, a final formal "I don't know"/
-abstention policy, retrieval evaluation, an API, a frontend, and
-containerization.
+**Not yet implemented:** OCR for scanned/image-only PDFs, confidence
+scoring, a final formal "I don't know"/abstention policy (verification
+verdicts are not yet turned into an accept/reject decision), retrieval
+evaluation, an API, a frontend, and containerization.
 
 ## Planned architecture
 
@@ -177,23 +200,27 @@ containerization.
 - **Grounded generation** *(implemented)*: generate an answer from only the
   final reranked evidence, with bracketed `[n]` citations validated
   against the supplied evidence range
-- **Citation verification**: an LLM/other judge checking a citation
-  actually supports its claim
-- **Confidence / abstention**: formal scoring and a final "I don't know"
-  decision policy, beyond today's fixed insufficient-evidence response form
+- **Citation verification** *(implemented)*: an LLM judge checks, per
+  citation occurrence, whether the cited evidence actually supports the
+  associated claim (`SUPPORTED`/`PARTIALLY_SUPPORTED`/`UNSUPPORTED`/
+  `CONTRADICTED`)
+- **Confidence / abstention**: turn verification verdicts into a
+  calibrated confidence score and a final "I don't know" decision policy
 - **Evaluation**: measure retrieval and answer quality
 - **API / dashboard**: expose the pipeline for querying and inspection
 - **Containerization**: package services for deployment
 
 Ingestion, chunking, deduplication, indexing, dense retrieval, sparse
-retrieval, hybrid RRF fusion, reranking, and grounded generation with
-bracketed citations are implemented as described above; the remaining
-stages describe intent, not current behavior. In particular, citation
-*semantic* verification, confidence scoring, and a final formal
-abstention policy are not implemented yet, and there is no query-side
-search API (FastAPI) yet — only the `scripts/query_dense.py`,
-`scripts/query_sparse.py`, `scripts/query_hybrid.py`,
-`scripts/query_reranked.py`, and `scripts/ask_grounded.py` development
+retrieval, hybrid RRF fusion, reranking, grounded generation with
+bracketed citations, and semantic citation verification are implemented
+as described above; the remaining stages describe intent, not current
+behavior. In particular, confidence scoring and a final formal
+abstention policy are not implemented yet — `CitationVerificationReport`
+provides a factual verdict tally, not an accept/reject decision — and
+there is no query-side search API (FastAPI) yet — only the
+`scripts/query_dense.py`, `scripts/query_sparse.py`,
+`scripts/query_hybrid.py`, `scripts/query_reranked.py`,
+`scripts/ask_grounded.py`, and `scripts/ask_verified.py` development
 scripts. No retrieval evaluation has been run or is claimed.
 
 ## Sample corpus
@@ -201,23 +228,26 @@ scripts. No retrieval evaluation has been run or is claimed.
 `data/sample/` contains a small, **fictional/synthetic** internal-document
 corpus for a made-up company ("Acme Cloud"), used for local development and
 exercising ingestion, chunking, deduplication, indexing, and dense/sparse/
-hybrid/reranked retrieval and grounded generation end-to-end. It is not
-real company data. It is intended for future retrieval evaluation work,
-but no evaluation has been implemented or run against it yet.
+hybrid/reranked retrieval, grounded generation, and citation verification
+end-to-end. It is not real company data. It is intended for future
+retrieval evaluation work, but no evaluation has been implemented or run
+against it yet.
 
 `scripts/index_sample_corpus.py` indexes this corpus with a chosen chunking
 strategy using the real OpenAI embedding provider (requires
 `OPENAI_API_KEY`); `scripts/query_dense.py`, `scripts/query_sparse.py`,
-`scripts/query_hybrid.py`, `scripts/query_reranked.py`, and
-`scripts/ask_grounded.py` then run one dense-, sparse-, hybrid-, reranked-,
-or grounded-generation query against the resulting active snapshot
-(`query_sparse.py` needs no API key — sparse retrieval never touches
-embeddings; the rest need one, since they call the dense channel too, and
-`ask_grounded.py` additionally calls the OpenAI generation model;
-`query_reranked.py` and `ask_grounded.py` also require the optional
-`sentence-transformers` extra and download its cross-encoder model on
-first use). Local runtime index data is written under `data/indexes/`
-(git-ignored, never `data/sample/`).
+`scripts/query_hybrid.py`, `scripts/query_reranked.py`,
+`scripts/ask_grounded.py`, and `scripts/ask_verified.py` then run one
+dense-, sparse-, hybrid-, reranked-, grounded-generation, or
+grounded-generation-plus-verification query against the resulting active
+snapshot (`query_sparse.py` needs no API key — sparse retrieval never
+touches embeddings; the rest need one, since they call the dense channel
+too, and `ask_grounded.py`/`ask_verified.py` additionally call the OpenAI
+generation model, with `ask_verified.py` also calling the OpenAI citation
+judge; `query_reranked.py`, `ask_grounded.py`, and `ask_verified.py` also
+require the optional `sentence-transformers` extra and download its
+cross-encoder model on first use). Local runtime index data is written
+under `data/indexes/` (git-ignored, never `data/sample/`).
 
 ## Local development setup
 
@@ -277,7 +307,8 @@ mypy
 - [x] Hybrid retrieval (weighted Reciprocal Rank Fusion of dense + sparse)
 - [x] Reranking (cross-encoder reorders top 20 hybrid candidates to a final top 5)
 - [x] Grounded generation (answer from reranked evidence only, bracketed `[n]` citations)
-- [ ] Citation semantic verification, confidence scoring, formal abstention policy
+- [x] Citation semantic verification (per-occurrence LLM-judge support verdicts)
+- [ ] Confidence scoring and a final formal abstention ("I don't know") policy
 - [ ] Evaluation
 - [ ] API / dashboard
 - [ ] Containerization and portfolio polish

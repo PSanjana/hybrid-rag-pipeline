@@ -23,3 +23,11 @@ class UncitedAnswerError(GenerationError):
 
 class RetrieveAndGenerateError(GenerationError):
     """Raised when retrieval fails during retrieve_and_generate orchestration."""
+
+
+class CitationJudgeError(GenerationError):
+    """Raised when a citation-judge provider is misconfigured, fails, or returns nothing."""
+
+
+class CitationJudgeOutputError(GenerationError):
+    """Raised when a judge's output doesn't exactly match the expected occurrence set."""

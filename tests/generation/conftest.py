@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
 
 from rag_pipeline.config import ChunkingStrategy, Settings
+from rag_pipeline.generation.base import RawJudgeVerdict
+from rag_pipeline.generation.citations import extract_citations
+from rag_pipeline.generation.context import build_evidence
+from rag_pipeline.generation.models import GroundedAnswer
 from rag_pipeline.retrieval.models import RerankedRetrievalResult
 
 
@@ -93,3 +97,78 @@ class FakeGenerator:
             return self._response_fn(system_prompt, user_prompt)
         assert self._response is not None
         return self._response
+
+
+def make_grounded_answer(
+    *,
+    answer_text: str,
+    reranked_results: Sequence[RerankedRetrievalResult] | None = None,
+) -> GroundedAnswer:
+    """Build a `GroundedAnswer` directly, bypassing `generate_grounded_answer()`.
+
+    Lets verification tests control `answer_text`/evidence precisely
+    (including deliberately-contradictory or malformed text) without
+    needing a `Generator` round-trip -- `GroundedAnswer` has no
+    construction-time validation of its own (validation lives in
+    `generate_grounded_answer()`), so this is a legitimate, direct way
+    to build test fixtures.
+    """
+    results = (
+        reranked_results
+        if reranked_results is not None
+        else [make_reranked_result(chunk_id="a", rank=1)]
+    )
+    evidence = build_evidence(results)
+    cited_numbers = extract_citations(answer_text)
+    return GroundedAnswer(
+        answer_text=answer_text,
+        evidence=tuple(evidence),
+        cited_numbers=tuple(cited_numbers),
+    )
+
+
+class FakeCitationJudge:
+    """Deterministic, network-free `CitationJudge` double for offline verification tests.
+
+    `verdicts_by_occurrence` maps `occurrence_id -> (citation_number,
+    verdict, rationale)` to return for that occurrence -- a well-formed
+    response covering exactly the given occurrence IDs. `override_raw`,
+    if given, is returned verbatim instead (as a list of
+    `RawJudgeVerdict`) -- lets tests simulate malformed judge output
+    (missing/duplicate/extra occurrence, wrong citation number, invalid
+    verdict, empty rationale) freely. `error`, if given, is raised
+    instead of judging at all (simulating a provider failure). Every
+    call's exact prompts are recorded in `.calls`.
+    """
+
+    def __init__(
+        self,
+        verdicts_by_occurrence: dict[int, tuple[int, str, str]] | None = None,
+        *,
+        override_raw: list[RawJudgeVerdict] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self._verdicts_by_occurrence = verdicts_by_occurrence or {}
+        self._override_raw = override_raw
+        self._error = error
+        self.calls: list[tuple[str, str]] = []
+
+    def judge(self, system_prompt: str, user_prompt: str) -> list[RawJudgeVerdict]:
+        self.calls.append((system_prompt, user_prompt))
+        if self._error is not None:
+            raise self._error
+        if self._override_raw is not None:
+            return self._override_raw
+        return [
+            RawJudgeVerdict(
+                occurrence_id=occurrence_id,
+                citation_number=citation_number,
+                verdict=verdict,
+                rationale=rationale,
+            )
+            for occurrence_id, (
+                citation_number,
+                verdict,
+                rationale,
+            ) in self._verdicts_by_occurrence.items()
+        ]
