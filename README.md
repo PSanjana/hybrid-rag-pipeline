@@ -81,6 +81,26 @@ configurable chunking:
   single channel. Native dense similarity/distance and BM25 score are
   retained on each result for diagnostics only and are never summed,
   normalized, or compared against each other.
+- Reorders a wide hybrid candidate set with **reranking**: `retrieve_reranked()`
+  calls the existing `retrieve_hybrid()` unmodified, requesting a wider
+  candidate pool than ordinary hybrid retrieval uses (`rerank_candidate_k`,
+  default **20** — deliberately independent of `hybrid_top_k`'s
+  general-purpose default of 10), then scores each `(query, chunk)` pair
+  with a `Reranker` (default: a local `sentence-transformers` cross-encoder,
+  `cross-encoder/ms-marco-MiniLM-L-6-v2`) and returns the final top
+  `rerank_top_k` (default **5**) chunks, sorted by `reranker_score` DESC.
+  Fast dense/sparse/RRF retrieval maximizes recall over the whole corpus;
+  reranking then improves precision over that narrowed candidate set by
+  scoring each pair jointly instead of comparing independent vectors.
+  Reranking is pure and provider-agnostic (`rerank_candidates()` depends
+  only on a small `Reranker` protocol, never a specific hosted API or
+  library), read-only, and never mutates a hybrid result or index
+  artifact; the original `hybrid_rank` and `rrf_score` are retained
+  alongside the new `reranker_score` for diagnostics, never discarded.
+  `reranker_score` is a raw, provider-specific relevance score, never a
+  probability/confidence value. The cross-encoder model is loaded lazily
+  (never at import time) and requires the optional `sentence-transformers`
+  extra (`pip install 'rag-pipeline[rerank]'`).
 
 **Chunking strategies, conceptually:**
 - *Fixed*: slices raw character windows on a fixed stride, so overlap between
@@ -94,9 +114,10 @@ configurable chunking:
   a topic change), with a hard size cap so one uniform section can't grow
   unbounded. Requires `OPENAI_API_KEY`.
 
-**Not yet implemented:** OCR for scanned/image-only PDFs, reranking,
-grounded generation, citations, confidence scoring, evaluation, an API, a
-frontend, and containerization.
+**Not yet implemented:** OCR for scanned/image-only PDFs, grounded
+generation, citations, citation verification, confidence scoring/graceful
+"I don't know" behavior, retrieval evaluation, an API, a frontend, and
+containerization.
 
 ## Planned architecture
 
@@ -125,38 +146,44 @@ frontend, and containerization.
 - **Hybrid retrieval** *(implemented)*: fuse the dense and sparse rankings
   with weighted Reciprocal Rank Fusion (RRF), combining rank positions
   rather than the incompatible native score scales
-- **Reranking**: reorder merged candidates for relevance
+- **Reranking** *(implemented)*: reorder a wide (default 20) hybrid
+  candidate pool with a cross-encoder-style reranker, keeping the final
+  top 5 chunks by `reranker_score`
 - **Grounded generation**: LLM answers with citation verification against sources
 - **Evaluation**: measure retrieval and answer quality
 - **API / dashboard**: expose the pipeline for querying and inspection
 - **Containerization**: package services for deployment
 
 Ingestion, chunking, deduplication, indexing, dense retrieval, sparse
-retrieval, and hybrid RRF fusion are implemented as described above; the
-remaining stages describe intent, not current behavior. In particular,
-reranking, grounded generation, citations, and confidence scoring are not
-implemented yet, and there is no query-side search API (FastAPI) yet —
-only the `scripts/query_dense.py`, `scripts/query_sparse.py`, and
-`scripts/query_hybrid.py` development scripts. No retrieval evaluation has
-been run or is claimed.
+retrieval, hybrid RRF fusion, and reranking are implemented as described
+above; the remaining stages describe intent, not current behavior. In
+particular, grounded generation, citations, citation verification, and
+confidence/"I don't know" behavior are not implemented yet, and there is
+no query-side search API (FastAPI) yet — only the `scripts/query_dense.py`,
+`scripts/query_sparse.py`, `scripts/query_hybrid.py`, and
+`scripts/query_reranked.py` development scripts. No retrieval evaluation
+has been run or is claimed.
 
 ## Sample corpus
 
 `data/sample/` contains a small, **fictional/synthetic** internal-document
 corpus for a made-up company ("Acme Cloud"), used for local development and
 exercising ingestion, chunking, deduplication, indexing, and dense/sparse/
-hybrid retrieval end-to-end. It is not real company data. It is intended
-for future retrieval evaluation work, but no evaluation has been
+hybrid/reranked retrieval end-to-end. It is not real company data. It is
+intended for future retrieval evaluation work, but no evaluation has been
 implemented or run against it yet.
 
 `scripts/index_sample_corpus.py` indexes this corpus with a chosen chunking
 strategy using the real OpenAI embedding provider (requires
-`OPENAI_API_KEY`); `scripts/query_dense.py`, `scripts/query_sparse.py`, and
-`scripts/query_hybrid.py` then run one dense-, sparse-, or hybrid-retrieval
-query against the resulting active snapshot (`query_sparse.py` needs no API
-key — sparse retrieval never touches embeddings; `query_hybrid.py` needs
-one, since it calls the dense channel too). Local runtime index data is
-written under `data/indexes/` (git-ignored, never `data/sample/`).
+`OPENAI_API_KEY`); `scripts/query_dense.py`, `scripts/query_sparse.py`,
+`scripts/query_hybrid.py`, and `scripts/query_reranked.py` then run one
+dense-, sparse-, hybrid-, or reranked-retrieval query against the resulting
+active snapshot (`query_sparse.py` needs no API key — sparse retrieval
+never touches embeddings; `query_hybrid.py` and `query_reranked.py` need
+one, since they call the dense channel too; `query_reranked.py` also
+requires the optional `sentence-transformers` extra and downloads its
+cross-encoder model on first use). Local runtime index data is written
+under `data/indexes/` (git-ignored, never `data/sample/`).
 
 ## Local development setup
 
@@ -172,6 +199,13 @@ cp .env.example .env
 
 ```bash
 pip install -e ".[dev]"
+```
+
+To run `scripts/query_reranked.py` (or anything using `CrossEncoderReranker`
+for real), also install the optional reranking extra:
+
+```bash
+pip install -e ".[rerank]"
 ```
 
 ### Run tests
@@ -207,7 +241,7 @@ mypy
 - [x] Dense retrieval (cosine nearest-neighbor, top-k, source provenance)
 - [x] Sparse (BM25) retrieval (shared tokenizer, top-k, source provenance)
 - [x] Hybrid retrieval (weighted Reciprocal Rank Fusion of dense + sparse)
-- [ ] Reranking
+- [x] Reranking (cross-encoder reorders top 20 hybrid candidates to a final top 5)
 - [ ] Grounded generation and citation verification
 - [ ] Evaluation
 - [ ] API / dashboard

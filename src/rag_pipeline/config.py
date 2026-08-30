@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     rrf_rank_constant: int = 60
     hybrid_top_k: int = 10
 
+    rerank_candidate_k: int = 20
+    rerank_top_k: int = 5
+    reranker_model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_batch_size: int = 32
+
     @model_validator(mode="after")
     def _validate_chunking_config(self) -> Settings:
         if self.chunk_size <= 0:
@@ -96,6 +101,20 @@ class Settings(BaseSettings):
             raise ValueError("rrf_rank_constant must not be negative.")
         if self.hybrid_top_k <= 0:
             raise ValueError("hybrid_top_k must be positive.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_reranking_config(self) -> Settings:
+        if self.rerank_candidate_k <= 0:
+            raise ValueError("rerank_candidate_k must be positive.")
+        if self.rerank_top_k <= 0:
+            raise ValueError("rerank_top_k must be positive.")
+        if self.rerank_top_k > self.rerank_candidate_k:
+            raise ValueError("rerank_top_k must not exceed rerank_candidate_k.")
+        if self.reranker_batch_size <= 0:
+            raise ValueError("reranker_batch_size must be positive.")
+        if not self.reranker_model_name.strip():
+            raise ValueError("reranker_model_name must not be empty.")
         return self
 
     @property

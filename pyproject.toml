@@ -27,6 +27,9 @@ dev = [
     "mypy>=1.11",
     "types-beautifulsoup4>=4.12",
 ]
+rerank = [
+    "sentence-transformers>=3.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rag_pipeline"]
@@ -52,4 +55,8 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = ["rank_bm25.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["sentence_transformers.*"]
 ignore_missing_imports = true

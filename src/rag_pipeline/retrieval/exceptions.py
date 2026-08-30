@@ -35,3 +35,11 @@ class FusionError(RetrievalError):
 
 class HybridRetrievalError(RetrievalError):
     """Raised when hybrid orchestration fails: the dense or sparse retrieval channel failed."""
+
+
+class RerankError(RetrievalError):
+    """Raised by the pure reranking layer: malformed candidates or malformed reranker output."""
+
+
+class RerankedRetrievalError(RetrievalError):
+    """Raised when reranked retrieval fails: hybrid retrieval or the reranker itself failed."""

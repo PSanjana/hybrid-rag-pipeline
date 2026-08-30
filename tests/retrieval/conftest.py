@@ -5,12 +5,17 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from rag_pipeline.chunking.models import Chunk, build_chunk
 from rag_pipeline.config import ChunkingStrategy, Settings
-from rag_pipeline.retrieval.models import DenseRetrievalResult, SparseRetrievalResult
+from rag_pipeline.retrieval.models import (
+    DenseRetrievalResult,
+    HybridRetrievalResult,
+    SparseRetrievalResult,
+)
 
 _HASH_EMBEDDING_DIM = 32
 
@@ -134,3 +139,78 @@ def make_sparse_result(
         page_number=page_number,
         chunking_strategy=chunking_strategy,
     )
+
+
+def make_hybrid_result(
+    *,
+    chunk_id: str,
+    rank: int,
+    rrf_score: float = 0.01,
+    text: str | None = None,
+    dense_rank: int | None = 1,
+    sparse_rank: int | None = None,
+    dense_contribution: float = 0.01,
+    sparse_contribution: float = 0.0,
+    dense_distance: float | None = 0.1,
+    dense_similarity: float | None = 0.9,
+    bm25_score: float | None = None,
+    document_id: str = "d" * 64,
+    chunk_index: int = 0,
+    source_file: str = "doc.md",
+    section_heading: str | None = None,
+    page_number: int | None = None,
+    chunking_strategy: ChunkingStrategy = ChunkingStrategy.RECURSIVE,
+) -> HybridRetrievalResult:
+    return HybridRetrievalResult(
+        chunk_id=chunk_id,
+        rank=rank,
+        rrf_score=rrf_score,
+        dense_rank=dense_rank,
+        sparse_rank=sparse_rank,
+        dense_contribution=dense_contribution,
+        sparse_contribution=sparse_contribution,
+        dense_distance=dense_distance,
+        dense_similarity=dense_similarity,
+        bm25_score=bm25_score,
+        text=text if text is not None else f"text for {chunk_id}",
+        document_id=document_id,
+        chunk_index=chunk_index,
+        source_file=source_file,
+        section_heading=section_heading,
+        page_number=page_number,
+        chunking_strategy=chunking_strategy,
+    )
+
+
+class FakeReranker:
+    """Deterministic, network-free `Reranker` double for offline reranking tests.
+
+    `scores_by_text` maps document text -> the score to return for it,
+    looked up in the exact order `documents` is received (so callers can
+    assert on `.calls` to verify candidate/hybrid-rank ordering was
+    preserved). `override_scores`, if given, is returned verbatim instead
+    of consulting `scores_by_text` -- lets tests simulate malformed
+    provider output (too few/many scores, non-numeric, NaN/inf) without
+    needing a matching text entry for every candidate. `error`, if given,
+    is raised instead of scoring at all (simulating a provider failure).
+    """
+
+    def __init__(
+        self,
+        scores_by_text: dict[str, float] | None = None,
+        *,
+        override_scores: list[object] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self._scores_by_text = scores_by_text or {}
+        self._override_scores = override_scores
+        self._error = error
+        self.calls: list[tuple[str, list[str]]] = []
+
+    def score(self, query: str, documents: Sequence[str]) -> list[float]:
+        self.calls.append((query, list(documents)))
+        if self._error is not None:
+            raise self._error
+        if self._override_scores is not None:
+            return cast(list[float], self._override_scores)
+        return [self._scores_by_text[document] for document in documents]

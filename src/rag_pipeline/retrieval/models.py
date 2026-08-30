@@ -90,3 +90,41 @@ class HybridRetrievalResult:
     section_heading: str | None
     page_number: int | None
     chunking_strategy: ChunkingStrategy
+
+
+@dataclass(frozen=True, slots=True)
+class RerankedRetrievalResult:
+    """One final reranked hit: a hybrid RRF candidate re-scored by a cross-encoder-style reranker.
+
+    `rank` starts at 1 and reflects final reranker ordering
+    (`reranker_score` DESC, then deterministic tie-breaking -- see
+    `retrieval.rerank`); it is assigned only after reranking and
+    truncation, and is a distinct, independent ranking from `hybrid_rank`
+    (the candidate's rank *before* reranking, retained for provenance/
+    debugging, never overwritten or discarded).
+
+    `reranker_score` is the raw, provider-specific relevance score for
+    this (query, chunk) pair -- never a probability, and never combined
+    with `rrf_score`, `dense_similarity`/`dense_distance`, or
+    `bm25_score`, all of which are retained here only for diagnostics.
+    """
+
+    chunk_id: str
+    rank: int
+    reranker_score: float
+    hybrid_rank: int
+    rrf_score: float
+    dense_rank: int | None
+    sparse_rank: int | None
+    dense_contribution: float
+    sparse_contribution: float
+    dense_distance: float | None
+    dense_similarity: float | None
+    bm25_score: float | None
+    text: str
+    document_id: str
+    chunk_index: int
+    source_file: str
+    section_heading: str | None
+    page_number: int | None
+    chunking_strategy: ChunkingStrategy
