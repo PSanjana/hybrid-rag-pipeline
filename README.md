@@ -20,17 +20,27 @@ configurable chunking:
   three switchable strategies — **fixed-size**, **recursive/structure-aware**,
   or **semantic (embedding-similarity)** — each producing chunks with
   deterministic IDs and full document/section/page provenance
-- Builds a **synchronized dense + sparse index** from one canonical, ordered
-  chunk corpus: dense embeddings (`text-embedding-3-small` by default) in a
-  local persistent **ChromaDB** collection (explicit **cosine** vector
-  space), and a **BM25** sparse index (`rank_bm25`) built with a shared,
-  versioned technical-documentation tokenizer. Both sides are built from the
-  exact same chunk IDs, verified to match before anything is activated, and
-  recorded in a deterministic, schema-versioned, per-strategy **index
-  snapshot manifest** (SHA-256 fingerprint over ordered chunk IDs + strategy
-  + embedding model + tokenizer version) — so fixed/recursive/semantic
-  indexes coexist independently, and re-indexing an unchanged corpus reuses
-  the existing snapshot instead of rebuilding it.
+- Embeds each chunking strategy's corpus once, then filters it through
+  **exact- and near-duplicate detection** before anything is indexed:
+  chunks with identical final text are dropped as exact duplicates, and any
+  chunk whose cosine similarity to an already-kept chunk exceeds a
+  configurable threshold (`DEDUP_SIMILARITY_THRESHOLD`, default **0.95**,
+  strict `>`) is dropped as a near duplicate. Every skipped duplicate is
+  recorded — never silently discarded — in a persisted, schema-versioned
+  duplicate report alongside the snapshot it belongs to.
+- Builds a **synchronized dense + sparse index** from one canonical, ordered,
+  **post-deduplication** chunk corpus: dense embeddings
+  (`text-embedding-3-small` by default) in a local persistent **ChromaDB**
+  collection (explicit **cosine** vector space), and a **BM25** sparse index
+  (`rank_bm25`) built with a shared, versioned technical-documentation
+  tokenizer. Both sides are built from the exact same kept chunk IDs,
+  verified to match before anything is activated, and recorded in a
+  deterministic, schema-versioned, per-strategy **index snapshot manifest**
+  (SHA-256 fingerprint over ordered chunk IDs + strategy + embedding model +
+  tokenizer version + deduplication algorithm/threshold) — so
+  fixed/recursive/semantic indexes coexist independently, and re-indexing an
+  unchanged corpus under an unchanged configuration reuses the existing
+  snapshot instead of rebuilding it (or re-embedding it).
 
 **Chunking strategies, conceptually:**
 - *Fixed*: slices raw character windows on a fixed stride, so overlap between
@@ -46,8 +56,8 @@ configurable chunking:
 
 **Not yet implemented:** OCR for scanned/image-only PDFs, dense query
 retrieval, sparse (BM25) query retrieval, hybrid search / Reciprocal Rank
-Fusion, reranking, near-duplicate chunk detection, grounded generation,
-citations, evaluation, an API, a frontend, and containerization.
+Fusion, reranking, grounded generation, citations, evaluation, an API, a
+frontend, and containerization.
 
 ## Planned architecture
 
@@ -57,28 +67,33 @@ citations, evaluation, an API, a frontend, and containerization.
 - **Chunking** *(implemented)*: split normalized documents into
   retrieval-oriented chunks using a configurable fixed/recursive/semantic
   strategy
-- **Indexing** *(implemented)*: embed chunks and build a synchronized
-  ChromaDB dense index + BM25 sparse index from one canonical chunk
-  ordering, tracked by a deterministic snapshot manifest
+- **Deduplication** *(implemented)*: filter exact- and near-duplicate chunks
+  (cosine similarity above a configurable threshold) out of each chunking
+  strategy's corpus before indexing, with every skipped duplicate recorded
+  in a persisted, auditable report
+- **Indexing** *(implemented)*: embed each corpus once, deduplicate it, and
+  build a synchronized ChromaDB dense index + BM25 sparse index from the
+  resulting canonical, post-dedup chunk ordering, tracked by a deterministic
+  snapshot manifest
 - **Hybrid retrieval**: combine dense vector search with sparse/BM25 keyword search
 - **Reranking**: reorder merged candidates for relevance
-- **Deduplication**: near-duplicate chunk detection (next Phase 1 step)
 - **Grounded generation**: LLM answers with citation verification against sources
 - **Evaluation**: measure retrieval and answer quality
 - **API / dashboard**: expose the pipeline for querying and inspection
 - **Containerization**: package services for deployment
 
-Ingestion, chunking, and indexing are implemented as described above; the
-remaining stages describe intent, not current behavior. In particular,
-dense query retrieval, sparse query retrieval, hybrid search / RRF, and
-reranking are not implemented yet — the index can be built and inspected at
-a low level, but there is no query-side search API.
+Ingestion, chunking, deduplication, and indexing are implemented as
+described above; the remaining stages describe intent, not current
+behavior. In particular, dense query retrieval, sparse query retrieval,
+hybrid search / RRF, and reranking are not implemented yet — the index can
+be built and inspected at a low level, but there is no query-side search
+API.
 
 ## Sample corpus
 
 `data/sample/` contains a small, **fictional/synthetic** internal-document
 corpus for a made-up company ("Acme Cloud"), used for local development and
-exercising ingestion, chunking, and indexing end-to-end. It is not real
+exercising ingestion, chunking, deduplication, and indexing end-to-end. It is not real
 company data. It is intended for future hybrid-retrieval evaluation work,
 but no retrieval or evaluation has been implemented or run against it yet.
 
@@ -131,8 +146,8 @@ mypy
 
 - [x] Ingestion (multi-format loading and normalization)
 - [x] Chunking (fixed, recursive, semantic)
+- [x] Near-duplicate chunk deduplication (exact + cosine-similarity, pre-indexing)
 - [x] Indexing (synchronized ChromaDB dense + BM25 sparse, per-strategy snapshots)
-- [ ] Near-duplicate chunk deduplication
 - [ ] Hybrid retrieval (dense + sparse + RRF + reranking)
 - [ ] Grounded generation and citation verification
 - [ ] Evaluation

@@ -5,13 +5,13 @@ Shared by semantic chunking and dense indexing; neither owns this module.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
 
 from openai import OpenAI, OpenAIError
 
 from ..config import Settings
 from .exceptions import EmbeddingProviderError
+from .validation import validate_consistent_dimensionality, validate_vector
 
 _DEFAULT_BATCH_SIZE = 128
 
@@ -82,27 +82,8 @@ class OpenAIEmbeddingProvider:
                 )
             for index in range(len(batch)):
                 vector = by_index[index]
-                _validate_vector(vector)
+                validate_vector(vector)
                 embeddings.append(vector)
 
-        _validate_consistent_dimensionality(embeddings)
+        validate_consistent_dimensionality(embeddings)
         return embeddings
-
-
-def _validate_vector(vector: list[float]) -> None:
-    if not vector:
-        raise EmbeddingProviderError("Embedding provider returned an empty vector.")
-    if not all(math.isfinite(value) for value in vector):
-        raise EmbeddingProviderError("Embedding provider returned a non-finite value.")
-
-
-def _validate_consistent_dimensionality(vectors: list[list[float]]) -> None:
-    if not vectors:
-        return
-    expected_dim = len(vectors[0])
-    for vector in vectors:
-        if len(vector) != expected_dim:
-            raise EmbeddingProviderError(
-                f"Inconsistent embedding dimensionality within one call: expected "
-                f"{expected_dim}, got {len(vector)}."
-            )

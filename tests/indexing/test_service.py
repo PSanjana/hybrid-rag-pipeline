@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import replace
 
 import chromadb.errors
 import pytest
 
 from rag_pipeline.config import ChunkingStrategy, Settings
+from rag_pipeline.deduplication import DEDUP_ALGORITHM_VERSION
 from rag_pipeline.indexing import service as service_module
+from rag_pipeline.indexing.dedup_report import dedup_report_dir, load_dedup_report
 from rag_pipeline.indexing.dense import (
     build_collection_name,
     get_chroma_client,
@@ -31,16 +34,22 @@ from rag_pipeline.indexing.sparse import (
 )
 from rag_pipeline.indexing.tokenizer import TOKENIZER_VERSION
 
-from .conftest import FakeEmbeddingProvider, make_chunks
+from .conftest import FakeEmbeddingProvider, ForcedSimilarityEmbeddingProvider, make_chunks
 
 
 def _expected_snapshot_id_for(chunks: list, settings: Settings) -> str:
+    # Valid only when `chunks` contains no forced/accidental duplicates --
+    # in that case the kept (post-dedup) corpus is exactly the raw
+    # canonical corpus, so the raw chunk_ids double as the final snapshot's
+    # kept chunk_ids too.
     ordered = canonical_order(chunks)
     return compute_snapshot_id(
         tuple(chunk.chunk_id for chunk in ordered),
         ChunkingStrategy.RECURSIVE,
         settings.embedding_model,
         TOKENIZER_VERSION,
+        DEDUP_ALGORITHM_VERSION,
+        settings.dedup_similarity_threshold,
     )
 
 
@@ -230,6 +239,40 @@ def test_reindexing_without_a_provider_reuses_snapshot_without_requiring_api_key
     assert result.reused_existing is True
 
 
+def test_snapshot_with_duplicates_is_correctly_reused(index_settings: Settings) -> None:
+    chunks = make_chunks(3, text_prefix="Reuse-with-dedup chunk")
+    provider = ForcedSimilarityEmbeddingProvider({chunks[0].text, chunks[1].text})
+
+    first = index_chunks(chunks, index_settings, embedding_provider=provider)
+    assert first.reused_existing is False
+    assert first.manifest.duplicate_count == 1
+    calls_after_first = len(provider.calls)
+
+    second = index_chunks(chunks, index_settings, embedding_provider=provider)
+    assert second.reused_existing is True
+    assert second.manifest.snapshot_id == first.manifest.snapshot_id
+    assert len(provider.calls) == calls_after_first  # no new embedding call
+
+
+def test_threshold_change_triggers_rebuild_not_reuse(index_settings: Settings) -> None:
+    chunks = make_chunks(3, text_prefix="Threshold change chunk")
+    provider = FakeEmbeddingProvider()
+
+    first = index_chunks(chunks, index_settings, embedding_provider=provider)
+    assert len(provider.calls) == 1
+
+    changed_settings = Settings(
+        _env_file=None,
+        index_root_dir=index_settings.index_root_dir,
+        dedup_similarity_threshold=0.5,
+    )
+    second = index_chunks(chunks, changed_settings, embedding_provider=provider)
+
+    assert second.reused_existing is False
+    assert second.manifest.snapshot_id != first.manifest.snapshot_id
+    assert len(provider.calls) == 2  # re-embedded rather than incorrectly reused
+
+
 # --- strategy isolation ----------------------------------------------------
 
 
@@ -264,6 +307,125 @@ def test_fixed_and_recursive_indexes_coexist_independently(index_settings: Setti
     fixed_collection = client.get_collection(name=fixed_result.manifest.chroma_collection_name)
     assert recursive_collection.count() == 3
     assert fixed_collection.count() == 3
+
+
+# --- deduplication integration ------------------------------------------------
+
+
+def test_near_duplicate_chunk_is_excluded_from_both_indexes(index_settings: Settings) -> None:
+    chunks = make_chunks(3, text_prefix="Distinct chunk")
+    provider = ForcedSimilarityEmbeddingProvider({chunks[0].text, chunks[1].text})
+
+    result = index_chunks(chunks, index_settings, embedding_provider=provider)
+
+    assert result.manifest.pre_dedup_chunk_count == 3
+    assert result.manifest.duplicate_count == 1
+    assert result.manifest.chunk_count == 2
+
+    kept_ids = set(result.manifest.chunk_ids)
+    assert (chunks[0].chunk_id in kept_ids) != (chunks[1].chunk_id in kept_ids)
+    assert chunks[2].chunk_id in kept_ids
+
+    client = get_chroma_client(index_settings)
+    collection = client.get_collection(name=result.manifest.chroma_collection_name)
+    assert set(get_dense_collection_ids(collection)) == kept_ids
+
+    sparse_snapshot = load_sparse_snapshot(index_settings, result.manifest.snapshot_id)
+    assert set(sparse_snapshot.chunk_ids) == kept_ids
+
+
+def test_dense_sparse_and_manifest_ids_are_exactly_the_kept_ids(index_settings: Settings) -> None:
+    chunks = make_chunks(4, text_prefix="Sync check chunk")
+    provider = ForcedSimilarityEmbeddingProvider({chunks[0].text, chunks[2].text})
+
+    result = index_chunks(chunks, index_settings, embedding_provider=provider)
+
+    client = get_chroma_client(index_settings)
+    collection = client.get_collection(name=result.manifest.chroma_collection_name)
+    dense_ids = set(get_dense_collection_ids(collection))
+    sparse_snapshot = load_sparse_snapshot(index_settings, result.manifest.snapshot_id)
+
+    assert dense_ids == set(sparse_snapshot.chunk_ids) == set(result.manifest.chunk_ids)
+    assert len(result.manifest.chunk_ids) == 3
+
+
+def test_manifest_records_pre_and_post_dedup_counts(index_settings: Settings) -> None:
+    chunks = make_chunks(5, text_prefix="Count check chunk")
+    provider = ForcedSimilarityEmbeddingProvider({chunks[1].text, chunks[3].text})
+
+    result = index_chunks(chunks, index_settings, embedding_provider=provider)
+
+    assert result.manifest.pre_dedup_chunk_count == 5
+    assert result.manifest.duplicate_count == 1
+    assert result.manifest.chunk_count == 4
+
+
+def test_dedup_report_is_persisted_and_matches_manifest(index_settings: Settings) -> None:
+    chunks = make_chunks(3, text_prefix="Report check chunk")
+    provider = ForcedSimilarityEmbeddingProvider({chunks[0].text, chunks[1].text})
+
+    result = index_chunks(chunks, index_settings, embedding_provider=provider)
+
+    report = load_dedup_report(index_settings, result.manifest.snapshot_id)
+    assert len(report.duplicates) == 1
+    assert report.dedup_algorithm_version == DEDUP_ALGORITHM_VERSION
+    assert report.dedup_similarity_threshold == index_settings.dedup_similarity_threshold
+
+
+def test_no_duplicates_found_still_records_zero_correctly(index_settings: Settings) -> None:
+    chunks = make_chunks(3, text_prefix="No dup chunk")
+    result = index_chunks(chunks, index_settings, embedding_provider=FakeEmbeddingProvider())
+
+    assert result.manifest.duplicate_count == 0
+    assert result.manifest.pre_dedup_chunk_count == 3
+    assert result.manifest.chunk_count == 3
+    report = load_dedup_report(index_settings, result.manifest.snapshot_id)
+    assert report.duplicates == ()
+
+
+def test_failed_deduplication_preserves_previous_manifest(
+    index_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    baseline_chunks = make_chunks(2, text_prefix="Baseline before dedup failure")
+    baseline_result = index_chunks(
+        baseline_chunks, index_settings, embedding_provider=FakeEmbeddingProvider()
+    )
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("simulated deduplication failure")
+
+    monkeypatch.setattr(service_module, "deduplicate_chunks", _boom)
+
+    new_chunks = make_chunks(2, text_prefix="New corpus that fails during deduplication")
+    # Deduplication fails before snapshot_id/collection_name are ever
+    # computed, so this also exercises _cleanup_failed_snapshot(settings,
+    # None, None) -- nothing was created, so cleanup must be a safe no-op.
+    with pytest.raises(IndexingError):
+        index_chunks(new_chunks, index_settings, embedding_provider=FakeEmbeddingProvider())
+
+    still_active = load_manifest(index_settings, ChunkingStrategy.RECURSIVE)
+    assert still_active == baseline_result.manifest
+
+
+def test_failed_dedup_report_write_does_not_replace_a_valid_manifest(
+    index_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    baseline_chunks = make_chunks(3, text_prefix="Baseline for dedup report failure")
+    baseline_result = index_chunks(
+        baseline_chunks, index_settings, embedding_provider=FakeEmbeddingProvider()
+    )
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("simulated dedup report write failure")
+
+    monkeypatch.setattr(service_module, "write_dedup_report", _boom)
+
+    new_chunks = make_chunks(3, text_prefix="New corpus that fails dedup report activation")
+    with pytest.raises(IndexingError):
+        index_chunks(new_chunks, index_settings, embedding_provider=FakeEmbeddingProvider())
+
+    still_active = load_manifest(index_settings, ChunkingStrategy.RECURSIVE)
+    assert still_active == baseline_result.manifest
 
 
 # --- manifest activation is part of the protected build ------------------------
@@ -329,6 +491,23 @@ def test_failed_manifest_write_removes_the_new_sparse_directory(
     assert not sparse_snapshot_dir(index_settings, expected_snapshot_id).exists()
 
 
+def test_failed_manifest_write_removes_the_new_dedup_report_directory(
+    index_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("simulated manifest write failure")
+
+    monkeypatch.setattr(service_module, "write_manifest", _boom)
+
+    chunks = make_chunks(3, text_prefix="Orphaned dedup report scenario")
+    expected_snapshot_id = _expected_snapshot_id_for(chunks, index_settings)
+
+    with pytest.raises(IndexingError):
+        index_chunks(chunks, index_settings, embedding_provider=FakeEmbeddingProvider())
+
+    assert not dedup_report_dir(index_settings, expected_snapshot_id).exists()
+
+
 # --- strengthened existing-snapshot reuse validation ----------------------------
 
 
@@ -347,7 +526,7 @@ def test_reuse_rejects_corrupted_stored_dense_document_text(index_settings: Sett
     client = get_chroma_client(index_settings)
     collection = client.get_collection(name=result.manifest.chroma_collection_name)
     target_id = result.manifest.chunk_ids[0]
-    collection.update(ids=[target_id], embeddings=[[0.0] * 8], documents=["CORRUPTED TEXT"])
+    collection.update(ids=[target_id], embeddings=[[0.0] * 32], documents=["CORRUPTED TEXT"])
 
     ordered = canonical_order(chunks)
     assert _existing_snapshot_is_valid(index_settings, result.manifest, ordered) is False
@@ -395,6 +574,16 @@ def test_reuse_rejects_tokenizer_version_mismatch(index_settings: Settings) -> N
     assert _existing_snapshot_is_valid(index_settings, result.manifest, ordered) is False
 
 
+def test_reuse_rejects_missing_dedup_report(index_settings: Settings) -> None:
+    chunks = make_chunks(2, text_prefix="Missing dedup report corpus")
+    result = index_chunks(chunks, index_settings, embedding_provider=FakeEmbeddingProvider())
+
+    shutil.rmtree(dedup_report_dir(index_settings, result.manifest.snapshot_id))
+
+    ordered = canonical_order(chunks)
+    assert _existing_snapshot_is_valid(index_settings, result.manifest, ordered) is False
+
+
 def test_reindex_rebuilds_when_reuse_validation_fails(index_settings: Settings) -> None:
     # End-to-end: corrupt the dense text under an otherwise-matching
     # snapshot_id, then reindex the same corpus -- it must rebuild (not
@@ -405,7 +594,7 @@ def test_reindex_rebuilds_when_reuse_validation_fails(index_settings: Settings) 
     client = get_chroma_client(index_settings)
     collection = client.get_collection(name=first.manifest.chroma_collection_name)
     target_id = first.manifest.chunk_ids[0]
-    collection.update(ids=[target_id], embeddings=[[0.0] * 8], documents=["CORRUPTED TEXT"])
+    collection.update(ids=[target_id], embeddings=[[0.0] * 32], documents=["CORRUPTED TEXT"])
 
     second = index_chunks(chunks, index_settings, embedding_provider=FakeEmbeddingProvider())
 
@@ -465,7 +654,7 @@ def test_cleanup_failure_obtaining_chroma_client_does_not_mask_original_error(
         index_chunks(chunks, index_settings, embedding_provider=FakeEmbeddingProvider())
 
 
-def test_cleanup_still_removes_sparse_dir_when_chroma_cleanup_fails(
+def test_cleanup_still_removes_sparse_and_dedup_dirs_when_chroma_cleanup_fails(
     index_settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def _boom_manifest(*_args: object, **_kwargs: object) -> None:
@@ -487,6 +676,7 @@ def test_cleanup_still_removes_sparse_dir_when_chroma_cleanup_fails(
     with pytest.raises(IndexingError, match="manifest"):
         index_chunks(chunks, index_settings, embedding_provider=FakeEmbeddingProvider())
 
-    # Sparse directory cleanup must still happen even though Chroma
-    # cleanup (the first cleanup step) failed.
+    # Sparse and dedup-report directory cleanup must still happen even
+    # though Chroma cleanup (the first cleanup step) failed.
     assert not sparse_snapshot_dir(index_settings, expected_snapshot_id).exists()
+    assert not dedup_report_dir(index_settings, expected_snapshot_id).exists()

@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     index_root_dir: Path = Path("data/indexes")
     chroma_collection_prefix: str = "rag"
     index_batch_size: int = 500
+    dedup_similarity_threshold: float = 0.95
 
     @model_validator(mode="after")
     def _validate_chunking_config(self) -> Settings:
@@ -59,6 +60,12 @@ class Settings(BaseSettings):
             raise ValueError("chunk_semantic_similarity_threshold must be between -1.0 and 1.0.")
         if self.index_batch_size <= 0:
             raise ValueError("index_batch_size must be positive.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_dedup_config(self) -> Settings:
+        if not 0.0 <= self.dedup_similarity_threshold <= 1.0:
+            raise ValueError("dedup_similarity_threshold must be between 0.0 and 1.0.")
         return self
 
     @property

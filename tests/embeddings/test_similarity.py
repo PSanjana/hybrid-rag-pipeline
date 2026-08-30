@@ -1,8 +1,8 @@
-"""Tests for rag_pipeline.chunking.similarity."""
+"""Tests for rag_pipeline.embeddings.similarity."""
 
 import pytest
 
-from rag_pipeline.chunking.similarity import cosine_similarity
+from rag_pipeline.embeddings.similarity import cosine_similarity
 
 
 def test_identical_vectors_have_similarity_one() -> None:

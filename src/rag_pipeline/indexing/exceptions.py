@@ -27,3 +27,7 @@ class ManifestError(IndexingError):
 
 class SynchronizationError(IndexingError):
     """Raised when the dense and sparse indexes do not represent the same chunk corpus."""
+
+
+class DedupReportError(IndexingError):
+    """Raised when persisting or reading the deduplication duplicate report fails."""

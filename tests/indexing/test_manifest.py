@@ -9,14 +9,20 @@ def _manifest(strategy: ChunkingStrategy, snapshot_id: str = "a" * 64) -> IndexM
     return IndexManifest(
         schema_version=MANIFEST_SCHEMA_VERSION,
         snapshot_id=snapshot_id,
+        request_fingerprint="f" * 64,
         chunking_strategy=strategy,
         embedding_model="text-embedding-3-small",
         embedding_dimension=8,
         bm25_tokenizer_version="technical_v1",
+        dedup_algorithm_version="cosine_v1",
+        dedup_similarity_threshold=0.95,
+        pre_dedup_chunk_count=2,
         chunk_count=2,
+        duplicate_count=0,
         chunk_ids=("id1", "id2"),
         chroma_collection_name=f"rag-{strategy.value}-{snapshot_id[:12]}",
         sparse_snapshot_path="/tmp/corpus.json",
+        dedup_report_path="/tmp/duplicates.json",
     )
 
 

@@ -1,4 +1,9 @@
-"""Cosine similarity, used to detect semantic chunk boundaries."""
+"""Cosine similarity for embedding vectors.
+
+Shared by semantic chunking (topic-boundary detection) and near-duplicate
+chunk detection (`rag_pipeline.deduplication`) -- one implementation, so
+the two features can never develop subtly different similarity semantics.
+"""
 
 from __future__ import annotations
 

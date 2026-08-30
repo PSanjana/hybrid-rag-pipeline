@@ -9,6 +9,7 @@ implemented here.
 """
 
 from .exceptions import (
+    DedupReportError,
     DenseIndexError,
     IndexingError,
     InvalidChunkCorpusError,
@@ -24,6 +25,7 @@ from .tokenizer import TOKENIZER_VERSION, tokenize
 
 __all__ = [
     "TOKENIZER_VERSION",
+    "DedupReportError",
     "DenseIndexError",
     "IndexManifest",
     "IndexingError",

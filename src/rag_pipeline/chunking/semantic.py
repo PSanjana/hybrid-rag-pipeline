@@ -31,11 +31,15 @@ this domain.
 from __future__ import annotations
 
 from ..config import ChunkingStrategy, Settings
-from ..embeddings import EmbeddingProvider, EmbeddingProviderError, OpenAIEmbeddingProvider
+from ..embeddings import (
+    EmbeddingProvider,
+    EmbeddingProviderError,
+    OpenAIEmbeddingProvider,
+    cosine_similarity,
+)
 from ..ingestion.models import NormalizedDocument
 from .models import Chunk, build_chunk
 from .recursive import pack_structural
-from .similarity import cosine_similarity
 
 
 def _split_semantic_units(text: str) -> list[str]:

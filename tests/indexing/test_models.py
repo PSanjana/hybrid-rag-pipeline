@@ -5,7 +5,7 @@ import pytest
 from rag_pipeline.chunking.models import Chunk, build_chunk
 from rag_pipeline.config import ChunkingStrategy
 from rag_pipeline.indexing.exceptions import InvalidChunkCorpusError
-from rag_pipeline.indexing.models import IndexManifest, canonical_order
+from rag_pipeline.indexing.models import MANIFEST_SCHEMA_VERSION, IndexManifest, canonical_order
 
 from .conftest import make_chunks
 
@@ -123,16 +123,22 @@ def test_mixed_chunking_strategies_are_rejected() -> None:
 
 def test_index_manifest_round_trips_through_dict() -> None:
     manifest = IndexManifest(
-        schema_version=1,
+        schema_version=MANIFEST_SCHEMA_VERSION,
         snapshot_id="a" * 64,
+        request_fingerprint="b" * 64,
         chunking_strategy=ChunkingStrategy.RECURSIVE,
         embedding_model="text-embedding-3-small",
         embedding_dimension=8,
         bm25_tokenizer_version="technical_v1",
+        dedup_algorithm_version="cosine_v1",
+        dedup_similarity_threshold=0.95,
+        pre_dedup_chunk_count=3,
         chunk_count=2,
+        duplicate_count=1,
         chunk_ids=("id1", "id2"),
         chroma_collection_name="rag-recursive-abc123",
         sparse_snapshot_path="/tmp/corpus.json",
+        dedup_report_path="/tmp/duplicates.json",
         created_at="2026-01-01T00:00:00+00:00",
     )
     reloaded = IndexManifest.from_dict(manifest.to_dict())

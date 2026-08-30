@@ -37,11 +37,37 @@ REQUIRED_IDENTIFIERS = (
 
 
 class FakeEmbeddingProvider:
-    """Deterministic, network-free embedding stub."""
+    """Deterministic, network-free embedding stub.
+
+    Uses the full 32-byte SHA-256 digest, centered to [-1.0, 1.0] rather
+    than [0.0, 1.0] -- an all-positive embedding space gives unrelated
+    vectors a high baseline cosine similarity (measured mean ~0.76 at 8
+    dimensions), risking spurious near-duplicate detection once
+    deduplication runs against this fixture's output. Centering + the
+    larger dimension keeps max observed similarity among ~300 distinct
+    synthetic texts under 0.7, safely below the default 0.95 dedup
+    threshold.
+    """
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         return [
-            [byte / 255.0 for byte in hashlib.sha256(text.encode()).digest()[:8]] for text in texts
+            [(byte - 127.5) / 127.5 for byte in hashlib.sha256(text.encode()).digest()]
+            for text in texts
+        ]
+
+
+class _ForcedNearDuplicateEmbeddingProvider(FakeEmbeddingProvider):
+    """Wraps the base fake provider but forces a chosen set of texts to share one vector."""
+
+    def __init__(self, forced_group: set[str]) -> None:
+        self._forced_group = forced_group
+        self._forced_vector = super().embed([sorted(forced_group)[0]])[0]
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        base = super().embed(texts)
+        return [
+            list(self._forced_vector) if text in self._forced_group else vector
+            for text, vector in zip(texts, base, strict=True)
         ]
 
 
@@ -136,3 +162,64 @@ def test_no_chunk_text_mismatch_between_source_and_dense_storage(
     stored = collection.get(ids=list(by_id), include=["documents"])
     for chunk_id, document in zip(stored["ids"], stored["documents"], strict=True):
         assert document == by_id[chunk_id].text
+
+
+# --- deduplication against the real sample corpus -----------------------------
+
+
+def _find_forced_pair(chunks: list[Chunk]) -> tuple[Chunk, Chunk]:
+    candidates = [chunk for chunk in chunks if "ERR_DB_1042" in chunk.text]
+    assert len(candidates) >= 2, "sample corpus must contain at least two ERR_DB_1042 chunks"
+    target, paraphrase = candidates[0], candidates[1]
+    assert target.text != paraphrase.text
+    return target, paraphrase
+
+
+def test_forced_near_duplicate_pair_is_skipped_from_indexing(pipeline_settings: Settings) -> None:
+    chunks = _chunk_sample_corpus(pipeline_settings)
+    target, paraphrase = _find_forced_pair(chunks)
+
+    provider = _ForcedNearDuplicateEmbeddingProvider({target.text, paraphrase.text})
+    result = index_chunks(chunks, pipeline_settings, embedding_provider=provider)
+
+    assert result.manifest.pre_dedup_chunk_count == len(chunks)
+    assert result.manifest.duplicate_count >= 1
+    assert result.manifest.chunk_count == len(chunks) - result.manifest.duplicate_count
+
+    kept_ids = set(result.manifest.chunk_ids)
+    assert (target.chunk_id in kept_ids) != (paraphrase.chunk_id in kept_ids)
+
+
+def test_required_identifiers_survive_deduplication(pipeline_settings: Settings) -> None:
+    chunks = _chunk_sample_corpus(pipeline_settings)
+    target, paraphrase = _find_forced_pair(chunks)
+
+    provider = _ForcedNearDuplicateEmbeddingProvider({target.text, paraphrase.text})
+    result = index_chunks(chunks, pipeline_settings, embedding_provider=provider)
+
+    sparse_snapshot = load_sparse_snapshot(pipeline_settings, result.manifest.snapshot_id)
+    from rag_pipeline.indexing.tokenizer import tokenize
+
+    all_tokens: set[str] = set()
+    for text in sparse_snapshot.texts:
+        all_tokens.update(tokenize(text))
+
+    for identifier in REQUIRED_IDENTIFIERS:
+        assert identifier in all_tokens, f"missing tokenized identifier after dedup: {identifier}"
+
+
+def test_synchronization_holds_after_deduplication(pipeline_settings: Settings) -> None:
+    chunks = _chunk_sample_corpus(pipeline_settings)
+    target, paraphrase = _find_forced_pair(chunks)
+
+    provider = _ForcedNearDuplicateEmbeddingProvider({target.text, paraphrase.text})
+    result = index_chunks(chunks, pipeline_settings, embedding_provider=provider)
+
+    client = get_chroma_client(pipeline_settings)
+    collection = client.get_collection(name=result.manifest.chroma_collection_name)
+    dense_ids = set(get_dense_collection_ids(collection))
+    sparse_snapshot = load_sparse_snapshot(pipeline_settings, result.manifest.snapshot_id)
+
+    kept_ids = set(result.manifest.chunk_ids)
+    assert dense_ids == kept_ids
+    assert set(sparse_snapshot.chunk_ids) == kept_ids
