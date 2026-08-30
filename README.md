@@ -101,6 +101,30 @@ configurable chunking:
   probability/confidence value. The cross-encoder model is loaded lazily
   (never at import time) and requires the optional `sentence-transformers`
   extra (`pip install 'rag-pipeline[rerank]'`).
+- Answers questions with **grounded generation and bracketed citations**:
+  `retrieve_and_generate()` calls the existing `retrieve_reranked()`
+  unmodified, numbers its final top-5 chunks as evidence `[1]`..`[5]` (the
+  citation number is exactly the reranked rank — never the underlying
+  SHA-256 chunk ID), and asks a `Generator` (default: OpenAI Chat
+  Completions, `GENERATION_MODEL`, default `gpt-5.6-terra`) to answer using
+  only that evidence, with every material claim followed by a bracket
+  citation. Evidence blocks are rendered with fixed, content-independent
+  delimiters (`[n]` / `Source:` / `Section:` / `Page:` / `Content:`) and are
+  explicitly framed in the system prompt as **untrusted reference
+  material, not instructions** — text inside a document such as "ignore
+  previous instructions" is never treated as a directive. Retrieval-
+  diagnostic scores (cosine similarity/distance, BM25 score, RRF score,
+  reranker score) are never included in what the model sees. Generated
+  answers are validated before being returned: every cited number must
+  fall within the supplied evidence range (`[1, N]`), and a substantive
+  answer with supplied evidence but zero citations is rejected rather than
+  silently accepted — both raise a clear error instead of being repaired
+  or hidden. If the evidence genuinely doesn't answer the question, the
+  model is instructed to say so explicitly rather than guess; this is the
+  generation instruction and response *form* only, not a finished
+  confidence/abstention system (see Roadmap). A retrieval failure during
+  `retrieve_and_generate()` is surfaced, never silently answered without
+  evidence.
 
 **Chunking strategies, conceptually:**
 - *Fixed*: slices raw character windows on a fixed stride, so overlap between
@@ -114,9 +138,10 @@ configurable chunking:
   a topic change), with a hard size cap so one uniform section can't grow
   unbounded. Requires `OPENAI_API_KEY`.
 
-**Not yet implemented:** OCR for scanned/image-only PDFs, grounded
-generation, citations, citation verification, confidence scoring/graceful
-"I don't know" behavior, retrieval evaluation, an API, a frontend, and
+**Not yet implemented:** OCR for scanned/image-only PDFs, citation
+*semantic* verification (an LLM/other judge checking a citation actually
+supports its claim), confidence scoring, a final formal "I don't know"/
+abstention policy, retrieval evaluation, an API, a frontend, and
 containerization.
 
 ## Planned architecture
@@ -149,41 +174,50 @@ containerization.
 - **Reranking** *(implemented)*: reorder a wide (default 20) hybrid
   candidate pool with a cross-encoder-style reranker, keeping the final
   top 5 chunks by `reranker_score`
-- **Grounded generation**: LLM answers with citation verification against sources
+- **Grounded generation** *(implemented)*: generate an answer from only the
+  final reranked evidence, with bracketed `[n]` citations validated
+  against the supplied evidence range
+- **Citation verification**: an LLM/other judge checking a citation
+  actually supports its claim
+- **Confidence / abstention**: formal scoring and a final "I don't know"
+  decision policy, beyond today's fixed insufficient-evidence response form
 - **Evaluation**: measure retrieval and answer quality
 - **API / dashboard**: expose the pipeline for querying and inspection
 - **Containerization**: package services for deployment
 
 Ingestion, chunking, deduplication, indexing, dense retrieval, sparse
-retrieval, hybrid RRF fusion, and reranking are implemented as described
-above; the remaining stages describe intent, not current behavior. In
-particular, grounded generation, citations, citation verification, and
-confidence/"I don't know" behavior are not implemented yet, and there is
-no query-side search API (FastAPI) yet — only the `scripts/query_dense.py`,
-`scripts/query_sparse.py`, `scripts/query_hybrid.py`, and
-`scripts/query_reranked.py` development scripts. No retrieval evaluation
-has been run or is claimed.
+retrieval, hybrid RRF fusion, reranking, and grounded generation with
+bracketed citations are implemented as described above; the remaining
+stages describe intent, not current behavior. In particular, citation
+*semantic* verification, confidence scoring, and a final formal
+abstention policy are not implemented yet, and there is no query-side
+search API (FastAPI) yet — only the `scripts/query_dense.py`,
+`scripts/query_sparse.py`, `scripts/query_hybrid.py`,
+`scripts/query_reranked.py`, and `scripts/ask_grounded.py` development
+scripts. No retrieval evaluation has been run or is claimed.
 
 ## Sample corpus
 
 `data/sample/` contains a small, **fictional/synthetic** internal-document
 corpus for a made-up company ("Acme Cloud"), used for local development and
 exercising ingestion, chunking, deduplication, indexing, and dense/sparse/
-hybrid/reranked retrieval end-to-end. It is not real company data. It is
-intended for future retrieval evaluation work, but no evaluation has been
-implemented or run against it yet.
+hybrid/reranked retrieval and grounded generation end-to-end. It is not
+real company data. It is intended for future retrieval evaluation work,
+but no evaluation has been implemented or run against it yet.
 
 `scripts/index_sample_corpus.py` indexes this corpus with a chosen chunking
 strategy using the real OpenAI embedding provider (requires
 `OPENAI_API_KEY`); `scripts/query_dense.py`, `scripts/query_sparse.py`,
-`scripts/query_hybrid.py`, and `scripts/query_reranked.py` then run one
-dense-, sparse-, hybrid-, or reranked-retrieval query against the resulting
-active snapshot (`query_sparse.py` needs no API key — sparse retrieval
-never touches embeddings; `query_hybrid.py` and `query_reranked.py` need
-one, since they call the dense channel too; `query_reranked.py` also
-requires the optional `sentence-transformers` extra and downloads its
-cross-encoder model on first use). Local runtime index data is written
-under `data/indexes/` (git-ignored, never `data/sample/`).
+`scripts/query_hybrid.py`, `scripts/query_reranked.py`, and
+`scripts/ask_grounded.py` then run one dense-, sparse-, hybrid-, reranked-,
+or grounded-generation query against the resulting active snapshot
+(`query_sparse.py` needs no API key — sparse retrieval never touches
+embeddings; the rest need one, since they call the dense channel too, and
+`ask_grounded.py` additionally calls the OpenAI generation model;
+`query_reranked.py` and `ask_grounded.py` also require the optional
+`sentence-transformers` extra and download its cross-encoder model on
+first use). Local runtime index data is written under `data/indexes/`
+(git-ignored, never `data/sample/`).
 
 ## Local development setup
 
@@ -242,7 +276,8 @@ mypy
 - [x] Sparse (BM25) retrieval (shared tokenizer, top-k, source provenance)
 - [x] Hybrid retrieval (weighted Reciprocal Rank Fusion of dense + sparse)
 - [x] Reranking (cross-encoder reorders top 20 hybrid candidates to a final top 5)
-- [ ] Grounded generation and citation verification
+- [x] Grounded generation (answer from reranked evidence only, bracketed `[n]` citations)
+- [ ] Citation semantic verification, confidence scoring, formal abstention policy
 - [ ] Evaluation
 - [ ] API / dashboard
 - [ ] Containerization and portfolio polish

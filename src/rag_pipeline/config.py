@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     reranker_model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     reranker_batch_size: int = 32
 
+    generation_model: str = "gpt-5.6-terra"
+
     @model_validator(mode="after")
     def _validate_chunking_config(self) -> Settings:
         if self.chunk_size <= 0:
@@ -115,6 +117,12 @@ class Settings(BaseSettings):
             raise ValueError("reranker_batch_size must be positive.")
         if not self.reranker_model_name.strip():
             raise ValueError("reranker_model_name must not be empty.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_generation_config(self) -> Settings:
+        if not self.generation_model.strip():
+            raise ValueError("generation_model must not be empty.")
         return self
 
     @property
