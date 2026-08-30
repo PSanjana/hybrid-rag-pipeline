@@ -1,0 +1,332 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 5 0 R 6 0 R 7 0 R 8 0 R 9 0 R 10 0 R] /Count 7 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 11 0 R >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 12 0 R >>
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 13 0 R >>
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 14 0 R >>
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 15 0 R >>
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 16 0 R >>
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 3 0 R >> >> /MediaBox [0 0 612 792] /Contents 17 0 R >>
+endobj
+11 0 obj
+<< /Length 942 >>
+stream
+BT
+/F1 11 Tf
+72 760 Td
+(ACME CLOUD EMPLOYEE HANDBOOK) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Welcome to Acme Cloud) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(This handbook is a general reference for Acme Cloud employees covering) Tj
+0 -14 Td
+(conduct, working norms, time off, expenses, and basic security practices. It) Tj
+0 -14 Td
+(supplements, and does not replace, your offer letter and any country-specific) Tj
+0 -14 Td
+(addenda provided by People Operations.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Our mission is to help engineering teams ship reliable software faster, and to) Tj
+0 -14 Td
+(run the infrastructure behind that promise responsibly.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Our values:) Tj
+0 -14 Td
+(  - Default to transparency internally.) Tj
+0 -14 Td
+(  - Prefer reversible decisions and iterate quickly.) Tj
+0 -14 Td
+(  - Treat production stability as a shared responsibility.) Tj
+0 -14 Td
+(  - Assume good intent, and say so directly when something is wrong.) Tj
+ET
+endstream
+endobj
+12 0 obj
+<< /Length 1091 >>
+stream
+BT
+/F1 11 Tf
+72 760 Td
+(Code of Conduct) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Acme Cloud is committed to providing a respectful, harassment-free work) Tj
+0 -14 Td
+(environment for everyone, regardless of background, identity, or role.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Expected behavior includes:) Tj
+0 -14 Td
+(  - Treating colleagues, customers, and candidates with respect.) Tj
+0 -14 Td
+(  - Giving and receiving feedback constructively.) Tj
+0 -14 Td
+(  - Escalating concerns rather than letting them fester.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Unacceptable behavior includes harassment, discrimination, retaliation against) Tj
+0 -14 Td
+(someone who raises a concern in good faith, and misuse of company systems or) Tj
+0 -14 Td
+(customer data for personal purposes.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Report concerns to your manager, any People Operations partner, or through the) Tj
+0 -14 Td
+(confidential ethics reporting line linked on the internal People Operations) Tj
+0 -14 Td
+(portal. Reports are treated confidentially to the extent possible and) Tj
+0 -14 Td
+(retaliation is itself a policy violation.) Tj
+ET
+endstream
+endobj
+13 0 obj
+<< /Length 852 >>
+stream
+BT
+/F1 11 Tf
+72 760 Td
+(Working Hours and Remote Work) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Acme Cloud is a remote-friendly company. Most teams operate with flexible) Tj
+0 -14 Td
+(hours built around a few hours of core overlap with their immediate team,) Tj
+0 -14 Td
+(agreed upon locally.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Employees are expected to:) Tj
+0 -14 Td
+(  - Keep their calendar reasonably current for their team's time zone.) Tj
+0 -14 Td
+(  - Attend scheduled synchronous meetings for their team.) Tj
+0 -14 Td
+(  - Be reachable during their team's agreed core hours.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(On-call engineering roles have additional availability expectations during) Tj
+0 -14 Td
+(their rotation; see production-runbook.txt for on-call specifics, which take) Tj
+0 -14 Td
+(precedence over general working-hours guidance during an active rotation.) Tj
+ET
+endstream
+endobj
+14 0 obj
+<< /Length 858 >>
+stream
+BT
+/F1 11 Tf
+72 760 Td
+(Paid Time Off) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Acme Cloud offers a flexible paid-time-off program rather than a fixed annual) Tj
+0 -14 Td
+(allotment. Employees are encouraged to take at least three consecutive weeks) Tj
+0 -14 Td
+(off per year, in addition to shorter breaks.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(To request time off:) Tj
+0 -14 Td
+(  1. Discuss timing with your manager, especially around planned product) Tj
+0 -14 Td
+(launches or known on-call commitments.) Tj
+0 -14 Td
+(  2. Log the time off in the People Operations portal.) Tj
+0 -14 Td
+(  3. Set an out-of-office message and hand off any time-sensitive work before) Tj
+0 -14 Td
+(you leave.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Time off does not need to be justified beyond normal team planning. Manager) Tj
+0 -14 Td
+(approval exists to coordinate coverage, not to gatekeep rest.) Tj
+ET
+endstream
+endobj
+15 0 obj
+<< /Length 788 >>
+stream
+BT
+/F1 11 Tf
+72 760 Td
+(Expense Reimbursement) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Reasonable business expenses are reimbursed through the expense portal. Common) Tj
+0 -14 Td
+(reimbursable categories include conference travel approved in advance, a home-) Tj
+0 -14 Td
+(office equipment stipend, and team-building activities within budget) Tj
+0 -14 Td
+(guidelines set by your manager.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Submit expenses within 60 days of the purchase, with a receipt attached for) Tj
+0 -14 Td
+(any single expense over $25. Expenses submitted without a receipt above that) Tj
+0 -14 Td
+(threshold may be rejected.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Questions about whether something is reimbursable should be asked before the) Tj
+0 -14 Td
+(purchase, not after, by messaging #finance-help.) Tj
+ET
+endstream
+endobj
+16 0 obj
+<< /Length 1091 >>
+stream
+BT
+/F1 11 Tf
+72 760 Td
+(Security Basics for All Employees) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Every employee, not just engineers, plays a role in keeping Acme Cloud and) Tj
+0 -14 Td
+(customer data secure.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Baseline expectations:) Tj
+0 -14 Td
+(  - Use the company password manager for work credentials.) Tj
+0 -14 Td
+(  - Enroll in multi-factor authentication \(MFA\) for your company account as) Tj
+0 -14 Td
+(soon as you receive IT provisioning instructions.) Tj
+0 -14 Td
+(  - Never share your credentials or MFA codes with anyone, including IT staff,) Tj
+0 -14 Td
+(who should never ask for them.) Tj
+0 -14 Td
+(  - Report lost devices to #it-helpdesk immediately.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Employees with production system access are additionally subject to the) Tj
+0 -14 Td
+(access-control-policy.md requirements, including mandatory MFA for production) Tj
+0 -14 Td
+(access and membership in the production-engineers group. Those requirements) Tj
+0 -14 Td
+(are enforced separately from, and in addition to, the baseline expectations on) Tj
+0 -14 Td
+(this page.) Tj
+ET
+endstream
+endobj
+17 0 obj
+<< /Length 794 >>
+stream
+BT
+/F1 11 Tf
+72 760 Td
+(IT and Equipment) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(New employees receive a laptop and any role-specific equipment before their) Tj
+0 -14 Td
+(start date wherever possible. Equipment remains company property and must be) Tj
+0 -14 Td
+(returned upon departure.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Report hardware issues, access requests, and software install requests through) Tj
+0 -14 Td
+(the #it-helpdesk channel or the IT portal.) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(Closing note) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(This handbook is reviewed periodically by People Operations. Policies not) Tj
+0 -14 Td
+(covered here, including compensation and equity program details, are) Tj
+0 -14 Td
+(documented separately and shared directly with employees by People Operations) Tj
+0 -14 Td
+(and Finance.) Tj
+ET
+endstream
+endobj
+xref
+0 18
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000152 00000 n 
+0000000222 00000 n 
+0000000349 00000 n 
+0000000476 00000 n 
+0000000603 00000 n 
+0000000730 00000 n 
+0000000857 00000 n 
+0000000984 00000 n 
+0000001112 00000 n 
+0000002106 00000 n 
+0000003250 00000 n 
+0000004154 00000 n 
+0000005064 00000 n 
+0000005904 00000 n 
+0000007048 00000 n 
+trailer
+<< /Size 18 /Root 1 0 R >>
+startxref
+7894
+%%EOF

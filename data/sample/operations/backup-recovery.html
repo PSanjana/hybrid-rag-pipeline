@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Backup &amp; Recovery — Acme Cloud Internal Docs</title>
+  <style>
+    body { font-family: sans-serif; }
+    table { border-collapse: collapse; }
+  </style>
+</head>
+<body>
+  <h1>Backup and Recovery</h1>
+
+  <p>
+    This page describes how Acme Cloud backs up production PostgreSQL data
+    and the process for restoring it.
+  </p>
+
+  <h2>Backup schedule</h2>
+  <p>
+    Full PostgreSQL backups run <strong>daily</strong>. In addition,
+    write-ahead log (WAL) shipping enables point-in-time recovery (PITR)
+    for any moment within the retention window.
+  </p>
+  <ul>
+    <li>Full backup frequency: daily, during the low-traffic window.</li>
+    <li>PITR retention: 7 days.</li>
+    <li>Backups are stored encrypted, in a separate cloud region from the
+      primary database.</li>
+    <li>Backup integrity is verified weekly by an automated restore into
+      an isolated staging environment.</li>
+  </ul>
+
+  <h2>Restore procedure</h2>
+  <p>
+    Restoring production data is a high-risk operation and follows a strict
+    approval process.
+  </p>
+  <ol>
+    <li>Identify the target restore point (either "latest full backup" or a
+      specific PITR timestamp).</li>
+    <li>If the restore is happening during an active incident, the
+      restore must be approved by the incident commander before
+      proceeding. Outside of an active incident, restores require sign-off
+      from a platform-data team lead.</li>
+    <li>Provision an isolated restore target — production restores are
+      never performed directly in place without first validating the
+      restored data.</li>
+    <li>Run the restore using the internal <code>pg-restore-tool</code>,
+      specifying the backup identifier or PITR timestamp.</li>
+    <li>Validate row counts and spot-check critical tables before cutting
+      traffic over.</li>
+  </ol>
+
+  <pre>pg-restore-tool \
+  --target isolated-restore-01 \
+  --pitr-timestamp "2026-03-10T09:15:00Z" \
+  --approved-by ic:jrivera</pre>
+
+  <h2>What backups do not cover</h2>
+  <p>
+    Object storage (uploaded customer files) is replicated independently
+    and is not part of the PostgreSQL backup process described here.
+    Application configuration and secrets are versioned separately in the
+    infrastructure repository.
+  </p>
+
+  <h2>Related documentation</h2>
+  <p>
+    See <code>database-operations.md</code> for connection-pool behavior
+    and <code>incident-response.md</code> for the incident commander's
+    broader responsibilities during an active incident.
+  </p>
+</body>
+</html>

@@ -1,0 +1,94 @@
+ACME CLOUD - PRODUCTION RUNBOOK
+Audience: on-call engineers
+Last reviewed by: platform-ops
+
+This runbook collects short, action-oriented notes for common production
+situations. It is deliberately terse. For background and rationale, see the
+longer-form docs in engineering/ and operations/.
+
+================================================================
+SECTION: On-call basics
+================================================================
+Rotation: platform on-call, one primary + one secondary, weekly rotation.
+Paging tool: PagerDuty, escalation policy "platform-primary".
+First response target: SEV1/SEV2 within 15 minutes, ack in PagerDuty.
+
+Escalate to incident commander duty if:
+  - customer-facing error rate is elevated across multiple services
+  - a fix requires changes that are unusually risky
+  - you are not confident you can resolve within 30 minutes alone
+
+================================================================
+SECTION: Deploy freeze reminder
+================================================================
+Field: Freeze window     -> Friday 18:00 to 23:59 UTC
+Field: Internal name     -> DEPLOY_FREEZE
+Field: Normal deploys    -> blocked automatically during the window
+Field: Emergency bypass  -> requires incident commander sign-off, logged
+                             in the incident channel before running the
+                             deploy workflow with --force-through-freeze
+
+Do not attempt to bypass DEPLOY_FREEZE yourself without IC approval, even
+if you are confident the change is safe. This is a policy control, not a
+technical one.
+
+================================================================
+SECTION: Database connection pool exhaustion (ERR_DB_1042)
+================================================================
+Symptom: elevated ERR_DB_1042 responses, db_pool_in_use metric pinned near
+the configured pool size.
+
+Background: each service pool is sized by DATABASE_POOL_SIZE (production
+default 20) and requests wait up to DATABASE_POOL_TIMEOUT (production
+default 30 seconds) for a free connection before the request fails.
+
+Quick triage steps:
+  1. Pull up the service dashboard, check db_pool_in_use vs pool size.
+  2. Query pg_stat_activity for long-running queries (see
+     database-operations.md for the exact query).
+  3. If a small number of runaway queries are the cause, terminate them.
+  4. If caused by real traffic growth rather than a leak, coordinate a
+     reviewed pool-size increase during a normal deploy window rather than
+     an ad hoc change.
+  5. Page platform-data if the primary itself looks unhealthy rather than
+     just the application-side pool.
+
+================================================================
+SECTION: Widespread webhook delivery failures (ERR_WEBHOOK_5003)
+================================================================
+Symptom: many customers reporting missed webhook events, or a spike in
+delivery failures across unrelated customer endpoints simultaneously.
+
+Background: individual endpoint failures are normal and retried
+automatically (up to MAX_WEBHOOK_RETRIES attempts, five by default, spaced
+out with exponential backoff). A spike affecting many endpoints at once
+usually points at Acme Cloud's dispatcher rather than customer endpoints.
+
+Quick triage steps:
+  1. Check the webhook-dispatcher service dashboard for error rate and
+     queue depth.
+  2. Confirm outbound network egress from the dispatcher is healthy.
+  3. Check for a recent dispatcher deploy correlated with the onset.
+  4. If the dispatcher itself is degraded, declare a SEV2 and follow
+     incident-response.md.
+  5. Once resolved, use the bulk-redeliver tool for affected customers
+     rather than asking them to manually retry.
+
+================================================================
+SECTION: Production access reminder
+================================================================
+Field: MFA requirement       -> required for all human production access
+Field: Required group        -> production-engineers
+Field: Access review cadence -> quarterly, owned by security team
+
+If you lose access to your MFA device, do not share credentials or ask a
+teammate to act on your behalf. File a ticket with #it-helpdesk for device
+recovery.
+
+================================================================
+SECTION: Escalation contacts
+================================================================
+platform-api    -> #eng-platform
+platform-data   -> #eng-database
+security        -> #security-oncall
+incident duty   -> paged automatically via /incident declare

@@ -14,6 +14,9 @@ dependencies = [
     "pypdf>=4.3",
     "beautifulsoup4>=4.12",
     "markdown-it-py>=3.0",
+    "openai>=1.40",
+    "chromadb>=0.5",
+    "rank-bm25>=0.2",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +39,7 @@ addopts = "--cov=rag_pipeline --cov-report=term-missing"
 src = ["src"]
 line-length = 100
 target-version = "py311"
+extend-exclude = ["data/sample"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -45,3 +49,7 @@ python_version = "3.11"
 mypy_path = "src"
 packages = ["rag_pipeline"]
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["rank_bm25.*"]
+ignore_missing_imports = true

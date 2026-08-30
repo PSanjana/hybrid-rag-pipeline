@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>API Rate Limits — Acme Cloud Docs</title>
+  <style>
+    body { font-family: sans-serif; color: #222; }
+    .callout { background: #fef3c7; padding: 1em; border-radius: 4px; }
+    pre { background: #f5f5f5; padding: 0.75em; }
+  </style>
+  <script>
+    // Docs-site analytics stub — not part of the documented behavior.
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){ dataLayer.push(arguments); }
+    gtag('event', 'page_view', { page: 'rate-limits' });
+  </script>
+</head>
+<body>
+  <h1>API Rate Limits</h1>
+
+  <p>
+    Standard Acme Cloud API clients are limited to <strong>1,000 requests
+    per minute per API key</strong>. This limit applies per key, not per
+    IP address, so multiple services sharing a key share the same budget.
+  </p>
+
+  <h2>Exceeding the limit</h2>
+  <p>
+    When a client exceeds the limit, the API returns an HTTP
+    <code>429</code> response with the internal error identifier
+    <code>ERR_RATE_4290</code> in the response body.
+  </p>
+
+  <pre>HTTP/1.1 429 Too Many Requests
+Retry-After: 12
+Content-Type: application/json
+
+{
+  "error": "ERR_RATE_4290",
+  "message": "Rate limit exceeded. Retry after 12 seconds."
+}</pre>
+
+  <h2>Recommended client behavior</h2>
+  <ul>
+    <li>Respect the <code>Retry-After</code> header when present.</li>
+    <li>Use exponential backoff with jitter for retried requests.</li>
+    <li>Cache responses where possible to reduce request volume.</li>
+    <li>Contact your account manager if your integration legitimately
+      needs a higher limit; enterprise plans support raised limits.</li>
+  </ul>
+
+  <h2>Rate limit headers</h2>
+  <p>
+    Every response includes headers describing the caller's current
+    rate-limit status:
+  </p>
+  <ul>
+    <li><code>X-RateLimit-Limit</code> — the limit for the current window.</li>
+    <li><code>X-RateLimit-Remaining</code> — requests remaining in the
+      current window.</li>
+    <li><code>X-RateLimit-Reset</code> — seconds until the window resets.</li>
+  </ul>
+
+  <noscript>Enable JavaScript to view interactive rate-limit examples.</noscript>
+</body>
+</html>

@@ -1,0 +1,57 @@
+ACME CLOUD API - INTERNAL ERROR CODE REFERENCE
+Owner: platform-api team
+Status: current
+
+This file lists internal error identifiers returned by Acme Cloud API
+services. Codes are stable and should not be reused for new error types.
+
+---
+Code: ERR_AUTH_4017
+HTTP Status: 401
+Meaning: Expired or invalid access token.
+Typical cause: Access token TTL (AUTH_TOKEN_TTL) has elapsed, or the token
+  was revoked, or the token signature does not match the current signing key.
+Client action: Use the refresh token to obtain a new access token. If the
+  refresh token has also expired, the user must re-authenticate.
+
+---
+Code: ERR_DB_1042
+HTTP Status: 503
+Meaning: Could not obtain a database connection from the pool before
+  DATABASE_POOL_TIMEOUT elapsed.
+Typical cause: Connection pool exhaustion, a slow query holding connections
+  open, or a leaked connection.
+Client action: Retry with backoff. If persistent, escalate to on-call
+  (see production-runbook.txt).
+
+---
+Code: ERR_RATE_4290
+HTTP Status: 429
+Meaning: Client exceeded the standard API rate limit.
+Typical cause: More than 1,000 requests per minute sent using a single API
+  key.
+Client action: Apply exponential backoff and respect the
+  Retry-After header.
+
+---
+Code: ERR_WEBHOOK_5003
+HTTP Status: n/a (internal, surfaced via delivery log)
+Meaning: Webhook delivery failed repeatedly and retry attempts were
+  exhausted (see MAX_WEBHOOK_RETRIES).
+Typical cause: Receiving endpoint returning non-2xx responses, timing out,
+  or being unreachable across all retry attempts.
+Client action: Inspect the webhook delivery log for the endpoint, confirm
+  the endpoint is reachable and returns a 2xx response quickly, and
+  request redelivery once fixed.
+
+---
+Code: ERR_VALIDATION_4000
+HTTP Status: 400
+Meaning: Request body failed schema validation.
+Typical cause: Missing required field, wrong type, or a value outside the
+  documented range.
+Client action: Check the `errors` array in the response body for the
+  specific field(s) that failed validation.
+
+---
+End of reference. For error codes not listed here, contact #eng-platform.
