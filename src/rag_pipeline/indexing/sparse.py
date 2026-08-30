@@ -148,6 +148,11 @@ def load_sparse_snapshot(
             f"Sparse snapshot {path} is malformed: {len(snapshot.chunk_ids)} chunk_ids "
             f"but {len(snapshot.texts)} texts."
         )
+    if len(set(snapshot.chunk_ids)) != len(snapshot.chunk_ids):
+        raise SparseIndexError(
+            f"Sparse snapshot {path} is malformed: contains duplicate chunk_ids. Each "
+            "chunk_id must appear exactly once."
+        )
     return snapshot
 
 

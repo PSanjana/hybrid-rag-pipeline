@@ -175,3 +175,29 @@ def test_load_bm25_index_rejects_tokenizer_version_mismatch(index_settings: Sett
     write_sparse_snapshot(index_settings, chunks, "snap-l", "some_old_tokenizer_v0")
     with pytest.raises(SparseIndexError, match="tokenizer_version"):
         load_bm25_index(index_settings, "snap-l")
+
+
+def test_duplicate_chunk_ids_in_persisted_snapshot_are_rejected(index_settings: Settings) -> None:
+    chunks = make_chunks(3)
+    write_sparse_snapshot(index_settings, chunks, "snap-dup", TOKENIZER_VERSION)
+
+    path = sparse_corpus_path(index_settings, "snap-dup")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["chunk_ids"][1] = data["chunk_ids"][0]  # same count, one id duplicated
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(SparseIndexError, match="duplicate"):
+        load_sparse_snapshot(index_settings, "snap-dup")
+
+
+def test_load_bm25_index_rejects_duplicate_chunk_ids(index_settings: Settings) -> None:
+    chunks = make_chunks(3)
+    write_sparse_snapshot(index_settings, chunks, "snap-dup2", TOKENIZER_VERSION)
+
+    path = sparse_corpus_path(index_settings, "snap-dup2")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["chunk_ids"][1] = data["chunk_ids"][0]
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(SparseIndexError, match="duplicate"):
+        load_bm25_index(index_settings, "snap-dup2")

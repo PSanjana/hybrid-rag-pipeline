@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -9,6 +10,29 @@ import pytest
 
 from rag_pipeline.chunking.models import Chunk, build_chunk
 from rag_pipeline.config import ChunkingStrategy, Settings
+
+_HASH_EMBEDDING_DIM = 32
+
+
+class HashEmbeddingProvider:
+    """Deterministic, network-free embedding stub for tests that don't care about vector values.
+
+    Used to build a valid dense+sparse index for sparse-retrieval tests
+    (`index_chunks()` always builds both sides), even though sparse
+    retrieval itself never touches embeddings. Centered to [-1.0, 1.0]
+    (not [0.0, 1.0]) and using the full 32-byte digest for the same reason
+    as `tests/indexing/conftest.py`'s `FakeEmbeddingProvider`: an
+    all-positive embedding space gives unrelated vectors a high baseline
+    cosine similarity, which could make deduplication spuriously trigger
+    during indexing.
+    """
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        vectors = []
+        for text in texts:
+            digest = hashlib.sha256(text.encode("utf-8")).digest()
+            vectors.append([(digest[i] - 127.5) / 127.5 for i in range(_HASH_EMBEDDING_DIM)])
+        return vectors
 
 
 class DictEmbeddingProvider:

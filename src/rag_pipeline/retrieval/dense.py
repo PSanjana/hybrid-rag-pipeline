@@ -22,47 +22,28 @@ import logging
 import math
 from collections.abc import Sequence
 
-from chromadb.api.types import Metadata, QueryResult
+from chromadb.api.types import QueryResult
 from chromadb.errors import ChromaError
 
 from ..config import ChunkingStrategy, Settings
 from ..embeddings import EmbeddingProvider, EmbeddingProviderError, OpenAIEmbeddingProvider
 from ..embeddings.validation import validate_vector
 from ..indexing.dense import get_chroma_client
-from ..indexing.manifest import load_manifest
 from ..indexing.models import IndexManifest
-from .exceptions import (
-    DenseRetrievalError,
-    EmbeddingModelMismatchError,
-    IndexNotReadyError,
-    InvalidQueryError,
-    RetrievalError,
+from ._shared import (
+    load_active_manifest,
+    optional_int,
+    optional_str,
+    parse_chunking_strategy,
+    require_int,
+    require_str,
+    resolve_top_k,
+    validate_query,
 )
+from .exceptions import DenseRetrievalError, EmbeddingModelMismatchError
 from .models import DenseRetrievalResult
 
 logger = logging.getLogger(__name__)
-
-
-def _validate_query(query: str) -> None:
-    if not query.strip():
-        raise InvalidQueryError("Query must not be empty or whitespace-only.")
-
-
-def _resolve_top_k(top_k: int | None, settings: Settings) -> int:
-    resolved = settings.dense_top_k if top_k is None else top_k
-    if resolved <= 0:
-        raise RetrievalError(f"top_k must be positive, got {resolved!r}.")
-    return resolved
-
-
-def _load_active_manifest(settings: Settings, strategy: ChunkingStrategy) -> IndexManifest:
-    manifest = load_manifest(settings, strategy)
-    if manifest is None:
-        raise IndexNotReadyError(
-            f"No active index snapshot for strategy={strategy.value!r}. Build one with "
-            "rag_pipeline.indexing.index_chunks() first."
-        )
-    return manifest
 
 
 def _check_embedding_model_compatibility(settings: Settings, manifest: IndexManifest) -> None:
@@ -97,60 +78,6 @@ def _embed_query(
             f"dimension {expected_dimension}."
         )
     return vector
-
-
-def _require_str(metadata: Metadata, field: str, chunk_id: str) -> str:
-    value = metadata.get(field)
-    if not isinstance(value, str):
-        raise DenseRetrievalError(
-            f"Chroma query response metadata for id {chunk_id!r} has a non-string "
-            f"{field!r}: {value!r}."
-        )
-    return value
-
-
-def _require_int(metadata: Metadata, field: str, chunk_id: str) -> int:
-    value = metadata.get(field)
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise DenseRetrievalError(
-            f"Chroma query response metadata for id {chunk_id!r} has a non-integer "
-            f"{field!r}: {value!r}."
-        )
-    return value
-
-
-def _optional_str(metadata: Metadata, field: str, chunk_id: str) -> str | None:
-    """`field` absent -> None (indexing omits it entirely for a None source value).
-
-    `field` present but not a string is a corruption signal, not an
-    absence -- raises rather than silently coercing to None.
-    """
-    if field not in metadata:
-        return None
-    value = metadata[field]
-    if not isinstance(value, str):
-        raise DenseRetrievalError(
-            f"Chroma query response metadata for id {chunk_id!r} has a non-string "
-            f"{field!r}: {value!r}."
-        )
-    return value
-
-
-def _optional_int(metadata: Metadata, field: str, chunk_id: str) -> int | None:
-    """`field` absent -> None (indexing omits it entirely for a None source value).
-
-    `field` present but not a non-bool int is a corruption signal, not an
-    absence -- raises rather than silently coercing to None.
-    """
-    if field not in metadata:
-        return None
-    value = metadata[field]
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise DenseRetrievalError(
-            f"Chroma query response metadata for id {chunk_id!r} has a non-integer "
-            f"{field!r}: {value!r}."
-        )
-    return value
 
 
 def _parse_query_response(
@@ -226,23 +153,12 @@ def _parse_query_response(
                 f"{distance!r}."
             )
 
-        document_id = _require_str(metadata, "document_id", chunk_id)
-        chunk_index = _require_int(metadata, "chunk_index", chunk_id)
-        source_file = _require_str(metadata, "source_file", chunk_id)
-        strategy_value = _require_str(metadata, "chunking_strategy", chunk_id)
-        try:
-            chunking_strategy = ChunkingStrategy(strategy_value)
-        except ValueError as exc:
-            raise DenseRetrievalError(
-                f"Chroma query response for id {chunk_id!r} has an invalid "
-                f"chunking_strategy={strategy_value!r}."
-            ) from exc
-        if chunking_strategy != requested_strategy:
-            raise DenseRetrievalError(
-                f"Chroma query response for id {chunk_id!r} has chunking_strategy="
-                f"{chunking_strategy.value!r}, but strategy={requested_strategy.value!r} "
-                "was requested."
-            )
+        document_id = require_str(metadata, "document_id", chunk_id, DenseRetrievalError)
+        chunk_index = require_int(metadata, "chunk_index", chunk_id, DenseRetrievalError)
+        source_file = require_str(metadata, "source_file", chunk_id, DenseRetrievalError)
+        chunking_strategy = parse_chunking_strategy(
+            metadata, chunk_id, requested_strategy, DenseRetrievalError
+        )
 
         distance_value = float(distance)
         results.append(
@@ -255,8 +171,10 @@ def _parse_query_response(
                 document_id=document_id,
                 chunk_index=chunk_index,
                 source_file=source_file,
-                section_heading=_optional_str(metadata, "section_heading", chunk_id),
-                page_number=_optional_int(metadata, "page_number", chunk_id),
+                section_heading=optional_str(
+                    metadata, "section_heading", chunk_id, DenseRetrievalError
+                ),
+                page_number=optional_int(metadata, "page_number", chunk_id, DenseRetrievalError),
                 chunking_strategy=chunking_strategy,
             )
         )
@@ -280,9 +198,9 @@ def retrieve_dense(
     with, and `DenseRetrievalError` for any embedding- or Chroma-response
     problem that can't be trusted.
     """
-    _validate_query(query)
-    resolved_top_k = _resolve_top_k(top_k, settings)
-    manifest = _load_active_manifest(settings, strategy)
+    validate_query(query)
+    resolved_top_k = resolve_top_k(top_k, settings.dense_top_k)
+    manifest = load_active_manifest(settings, strategy)
     _check_embedding_model_compatibility(settings, manifest)
 
     if embedding_provider is None:

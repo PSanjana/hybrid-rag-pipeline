@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     dedup_similarity_threshold: float = 0.95
 
     dense_top_k: int = 10
+    sparse_top_k: int = 10
 
     @model_validator(mode="after")
     def _validate_chunking_config(self) -> Settings:
@@ -74,6 +75,8 @@ class Settings(BaseSettings):
     def _validate_retrieval_config(self) -> Settings:
         if self.dense_top_k <= 0:
             raise ValueError("dense_top_k must be positive.")
+        if self.sparse_top_k <= 0:
+            raise ValueError("sparse_top_k must be positive.")
         return self
 
     @property

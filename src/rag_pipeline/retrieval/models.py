@@ -1,4 +1,4 @@
-"""Typed, immutable models for dense retrieval results."""
+"""Typed, immutable models for dense and sparse retrieval results."""
 
 from __future__ import annotations
 
@@ -24,6 +24,30 @@ class DenseRetrievalResult:
     text: str
     distance: float
     similarity: float
+    document_id: str
+    chunk_index: int
+    source_file: str
+    section_heading: str | None
+    page_number: int | None
+    chunking_strategy: ChunkingStrategy
+
+
+@dataclass(frozen=True, slots=True)
+class SparseRetrievalResult:
+    """One ranked BM25 sparse-retrieval hit, with full provenance back to its source chunk.
+
+    `rank` starts at 1 and reflects descending `bm25_score` order, with
+    ties broken by ascending canonical sparse-corpus position -- never an
+    independent re-sort by chunk_id or any other field. `bm25_score` is
+    the raw, unnormalized score from `BM25Okapi.get_scores()`: higher is
+    better, negative finite scores are valid, and it is never combined
+    with or compared against dense cosine similarity/distance.
+    """
+
+    chunk_id: str
+    rank: int
+    text: str
+    bm25_score: float
     document_id: str
     chunk_index: int
     source_file: str

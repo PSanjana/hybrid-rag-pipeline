@@ -50,6 +50,19 @@ configurable chunking:
   a derived similarity (`1.0 - distance`), and full source provenance
   (document, chunk index, source file, section heading/page number where
   present). Purely read-only: no index artifact is ever mutated by a query.
+- Answers questions with **sparse BM25 retrieval**: a question is tokenized
+  with the exact same shared, versioned technical tokenizer used to build
+  the index, then the active BM25 sparse corpus for the requested chunking
+  strategy — resolved solely from its manifest, never guessed — is scored
+  via `rank_bm25.BM25Okapi.get_scores()`, unnormalized. Results are ranked
+  by descending BM25 score (ties broken by ascending canonical corpus
+  position, never randomly), returned ranked (default top-k **10**,
+  configurable via `SPARSE_TOP_K` or per-call override), each carrying its
+  raw BM25 score and full source provenance. Chunk text/metadata are
+  hydrated from Chroma's synchronized record store using `Collection.get()`
+  only — never vector search — and cross-checked against the sparse
+  snapshot's own text for corruption. No embedding provider or API key is
+  needed. Purely read-only: no index artifact is ever mutated by a query.
 
 **Chunking strategies, conceptually:**
 - *Fixed*: slices raw character windows on a fixed stride, so overlap between
@@ -63,9 +76,9 @@ configurable chunking:
   a topic change), with a hard size cap so one uniform section can't grow
   unbounded. Requires `OPENAI_API_KEY`.
 
-**Not yet implemented:** OCR for scanned/image-only PDFs, sparse (BM25) query
-retrieval, hybrid search / Reciprocal Rank Fusion, reranking, grounded
-generation, citations, evaluation, an API, a frontend, and containerization.
+**Not yet implemented:** OCR for scanned/image-only PDFs, hybrid search /
+Reciprocal Rank Fusion (RRF), reranking, grounded generation, citations,
+evaluation, an API, a frontend, and containerization.
 
 ## Planned architecture
 
@@ -87,35 +100,43 @@ generation, citations, evaluation, an API, a frontend, and containerization.
   provider used at indexing time and return the top-k nearest chunks (cosine
   distance/similarity) from the active Chroma snapshot for a chunking
   strategy, with full source provenance
-- **Hybrid retrieval**: combine dense vector search with sparse/BM25 keyword search
+- **Sparse (BM25) retrieval** *(implemented)*: tokenize a question with the
+  same shared technical tokenizer used at indexing time and return the top-k
+  BM25 lexical matches from the active sparse snapshot, with full source
+  provenance
+- **Hybrid retrieval**: combine dense vector search with sparse/BM25 keyword
+  search via Reciprocal Rank Fusion (RRF)
 - **Reranking**: reorder merged candidates for relevance
 - **Grounded generation**: LLM answers with citation verification against sources
 - **Evaluation**: measure retrieval and answer quality
 - **API / dashboard**: expose the pipeline for querying and inspection
 - **Containerization**: package services for deployment
 
-Ingestion, chunking, deduplication, indexing, and dense retrieval are
-implemented as described above; the remaining stages describe intent, not
-current behavior. In particular, sparse (BM25) query retrieval, hybrid
-search / RRF, and reranking are not implemented yet — only dense retrieval
-is available, and there is no query-side search API (FastAPI) yet, only the
-`scripts/query_dense.py` development script. No retrieval evaluation has
+Ingestion, chunking, deduplication, indexing, dense retrieval, and sparse
+retrieval are implemented as described above; the remaining stages describe
+intent, not current behavior. In particular, hybrid search / RRF and
+reranking are not implemented yet — dense and sparse retrieval each run
+independently, with no fusion between them, and there is no query-side
+search API (FastAPI) yet, only the `scripts/query_dense.py` and
+`scripts/query_sparse.py` development scripts. No retrieval evaluation has
 been run or is claimed.
 
 ## Sample corpus
 
 `data/sample/` contains a small, **fictional/synthetic** internal-document
 corpus for a made-up company ("Acme Cloud"), used for local development and
-exercising ingestion, chunking, deduplication, indexing, and dense retrieval
-end-to-end. It is not real company data. It is intended for future
+exercising ingestion, chunking, deduplication, indexing, and dense/sparse
+retrieval end-to-end. It is not real company data. It is intended for future
 hybrid-retrieval evaluation work, but no evaluation has been implemented or
 run against it yet.
 
 `scripts/index_sample_corpus.py` indexes this corpus with a chosen chunking
 strategy using the real OpenAI embedding provider (requires
-`OPENAI_API_KEY`); `scripts/query_dense.py` then runs one dense-retrieval
-query against the resulting active snapshot. Local runtime index data is
-written under `data/indexes/` (git-ignored, never `data/sample/`).
+`OPENAI_API_KEY`); `scripts/query_dense.py` and `scripts/query_sparse.py`
+then run one dense- or sparse-retrieval query against the resulting active
+snapshot (`query_sparse.py` needs no API key — sparse retrieval never
+touches embeddings). Local runtime index data is written under
+`data/indexes/` (git-ignored, never `data/sample/`).
 
 ## Local development setup
 
@@ -164,7 +185,8 @@ mypy
 - [x] Near-duplicate chunk deduplication (exact + cosine-similarity, pre-indexing)
 - [x] Indexing (synchronized ChromaDB dense + BM25 sparse, per-strategy snapshots)
 - [x] Dense retrieval (cosine nearest-neighbor, top-k, source provenance)
-- [ ] Sparse (BM25) retrieval + hybrid fusion (RRF) + reranking
+- [x] Sparse (BM25) retrieval (shared tokenizer, top-k, source provenance)
+- [ ] Hybrid fusion (RRF) + reranking
 - [ ] Grounded generation and citation verification
 - [ ] Evaluation
 - [ ] API / dashboard
