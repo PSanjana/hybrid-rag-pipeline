@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     dense_top_k: int = 10
     sparse_top_k: int = 10
 
+    rrf_dense_weight: float = 0.7
+    rrf_sparse_weight: float = 0.3
+    rrf_rank_constant: int = 60
+    hybrid_top_k: int = 10
+
     @model_validator(mode="after")
     def _validate_chunking_config(self) -> Settings:
         if self.chunk_size <= 0:
@@ -77,6 +82,20 @@ class Settings(BaseSettings):
             raise ValueError("dense_top_k must be positive.")
         if self.sparse_top_k <= 0:
             raise ValueError("sparse_top_k must be positive.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_hybrid_config(self) -> Settings:
+        if self.rrf_dense_weight < 0:
+            raise ValueError("rrf_dense_weight must not be negative.")
+        if self.rrf_sparse_weight < 0:
+            raise ValueError("rrf_sparse_weight must not be negative.")
+        if self.rrf_dense_weight + self.rrf_sparse_weight <= 0:
+            raise ValueError("At least one of rrf_dense_weight/rrf_sparse_weight must be positive.")
+        if self.rrf_rank_constant < 0:
+            raise ValueError("rrf_rank_constant must not be negative.")
+        if self.hybrid_top_k <= 0:
+            raise ValueError("hybrid_top_k must be positive.")
         return self
 
     @property

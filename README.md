@@ -63,6 +63,24 @@ configurable chunking:
   only — never vector search — and cross-checked against the sparse
   snapshot's own text for corruption. No embedding provider or API key is
   needed. Purely read-only: no index artifact is ever mutated by a query.
+- Combines both channels with **weighted Reciprocal Rank Fusion (RRF)**:
+  `retrieve_hybrid()` calls the existing dense and sparse retrievers
+  unmodified, then fuses their independently-ranked results by *rank
+  position* — never by comparing or normalizing the incompatible raw
+  cosine/BM25 score scales. For a chunk at dense rank `r_d` and/or sparse
+  rank `r_s` (a missing side contributes exactly 0):
+  `rrf_score = dense_weight / (rank_constant + r_d) + sparse_weight / (rank_constant + r_s)`.
+  Defaults: dense weight **0.7**, sparse weight **0.3**, rank constant
+  **60**, hybrid top-k **10** (`RRF_DENSE_WEIGHT` / `RRF_SPARSE_WEIGHT` /
+  `RRF_RANK_CONSTANT` / `HYBRID_TOP_K`). The candidate set is the *union*
+  of dense and sparse chunk IDs — a chunk found by only one retriever
+  stays eligible — and ties are broken by a fully deterministic rule (best
+  available rank, then dense rank, then sparse rank, then chunk ID). Both
+  retrieval channels must succeed; a failure in either is surfaced as a
+  clear hybrid-retrieval error rather than silently falling back to a
+  single channel. Native dense similarity/distance and BM25 score are
+  retained on each result for diagnostics only and are never summed,
+  normalized, or compared against each other.
 
 **Chunking strategies, conceptually:**
 - *Fixed*: slices raw character windows on a fixed stride, so overlap between
@@ -76,9 +94,9 @@ configurable chunking:
   a topic change), with a hard size cap so one uniform section can't grow
   unbounded. Requires `OPENAI_API_KEY`.
 
-**Not yet implemented:** OCR for scanned/image-only PDFs, hybrid search /
-Reciprocal Rank Fusion (RRF), reranking, grounded generation, citations,
-evaluation, an API, a frontend, and containerization.
+**Not yet implemented:** OCR for scanned/image-only PDFs, reranking,
+grounded generation, citations, confidence scoring, evaluation, an API, a
+frontend, and containerization.
 
 ## Planned architecture
 
@@ -104,39 +122,41 @@ evaluation, an API, a frontend, and containerization.
   same shared technical tokenizer used at indexing time and return the top-k
   BM25 lexical matches from the active sparse snapshot, with full source
   provenance
-- **Hybrid retrieval**: combine dense vector search with sparse/BM25 keyword
-  search via Reciprocal Rank Fusion (RRF)
+- **Hybrid retrieval** *(implemented)*: fuse the dense and sparse rankings
+  with weighted Reciprocal Rank Fusion (RRF), combining rank positions
+  rather than the incompatible native score scales
 - **Reranking**: reorder merged candidates for relevance
 - **Grounded generation**: LLM answers with citation verification against sources
 - **Evaluation**: measure retrieval and answer quality
 - **API / dashboard**: expose the pipeline for querying and inspection
 - **Containerization**: package services for deployment
 
-Ingestion, chunking, deduplication, indexing, dense retrieval, and sparse
-retrieval are implemented as described above; the remaining stages describe
-intent, not current behavior. In particular, hybrid search / RRF and
-reranking are not implemented yet — dense and sparse retrieval each run
-independently, with no fusion between them, and there is no query-side
-search API (FastAPI) yet, only the `scripts/query_dense.py` and
-`scripts/query_sparse.py` development scripts. No retrieval evaluation has
+Ingestion, chunking, deduplication, indexing, dense retrieval, sparse
+retrieval, and hybrid RRF fusion are implemented as described above; the
+remaining stages describe intent, not current behavior. In particular,
+reranking, grounded generation, citations, and confidence scoring are not
+implemented yet, and there is no query-side search API (FastAPI) yet —
+only the `scripts/query_dense.py`, `scripts/query_sparse.py`, and
+`scripts/query_hybrid.py` development scripts. No retrieval evaluation has
 been run or is claimed.
 
 ## Sample corpus
 
 `data/sample/` contains a small, **fictional/synthetic** internal-document
 corpus for a made-up company ("Acme Cloud"), used for local development and
-exercising ingestion, chunking, deduplication, indexing, and dense/sparse
-retrieval end-to-end. It is not real company data. It is intended for future
-hybrid-retrieval evaluation work, but no evaluation has been implemented or
-run against it yet.
+exercising ingestion, chunking, deduplication, indexing, and dense/sparse/
+hybrid retrieval end-to-end. It is not real company data. It is intended
+for future retrieval evaluation work, but no evaluation has been
+implemented or run against it yet.
 
 `scripts/index_sample_corpus.py` indexes this corpus with a chosen chunking
 strategy using the real OpenAI embedding provider (requires
-`OPENAI_API_KEY`); `scripts/query_dense.py` and `scripts/query_sparse.py`
-then run one dense- or sparse-retrieval query against the resulting active
-snapshot (`query_sparse.py` needs no API key — sparse retrieval never
-touches embeddings). Local runtime index data is written under
-`data/indexes/` (git-ignored, never `data/sample/`).
+`OPENAI_API_KEY`); `scripts/query_dense.py`, `scripts/query_sparse.py`, and
+`scripts/query_hybrid.py` then run one dense-, sparse-, or hybrid-retrieval
+query against the resulting active snapshot (`query_sparse.py` needs no API
+key — sparse retrieval never touches embeddings; `query_hybrid.py` needs
+one, since it calls the dense channel too). Local runtime index data is
+written under `data/indexes/` (git-ignored, never `data/sample/`).
 
 ## Local development setup
 
@@ -186,7 +206,8 @@ mypy
 - [x] Indexing (synchronized ChromaDB dense + BM25 sparse, per-strategy snapshots)
 - [x] Dense retrieval (cosine nearest-neighbor, top-k, source provenance)
 - [x] Sparse (BM25) retrieval (shared tokenizer, top-k, source provenance)
-- [ ] Hybrid fusion (RRF) + reranking
+- [x] Hybrid retrieval (weighted Reciprocal Rank Fusion of dense + sparse)
+- [ ] Reranking
 - [ ] Grounded generation and citation verification
 - [ ] Evaluation
 - [ ] API / dashboard

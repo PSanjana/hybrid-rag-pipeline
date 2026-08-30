@@ -54,3 +54,39 @@ class SparseRetrievalResult:
     section_heading: str | None
     page_number: int | None
     chunking_strategy: ChunkingStrategy
+
+
+@dataclass(frozen=True, slots=True)
+class HybridRetrievalResult:
+    """One ranked hybrid hit, fusing independent dense and sparse rankings via weighted RRF.
+
+    `rank` starts at 1 and reflects final RRF ordering (`rrf_score` DESC,
+    then deterministic rank-based tie-breaking -- see `retrieval.fusion`);
+    it is assigned only after fusion and truncation, and is independent of
+    `dense_rank`/`sparse_rank`, which are `None` when the chunk was not
+    returned by that channel at all.
+
+    `rrf_score` is computed purely from `dense_rank`/`sparse_rank`
+    positions (see `dense_contribution`/`sparse_contribution`) -- never
+    from `dense_distance`/`dense_similarity`/`bm25_score`, which are
+    retained here only for diagnostics/provenance and are never summed,
+    normalized, or compared against each other.
+    """
+
+    chunk_id: str
+    rank: int
+    rrf_score: float
+    dense_rank: int | None
+    sparse_rank: int | None
+    dense_contribution: float
+    sparse_contribution: float
+    dense_distance: float | None
+    dense_similarity: float | None
+    bm25_score: float | None
+    text: str
+    document_id: str
+    chunk_index: int
+    source_file: str
+    section_heading: str | None
+    page_number: int | None
+    chunking_strategy: ChunkingStrategy

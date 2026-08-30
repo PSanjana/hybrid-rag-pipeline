@@ -27,3 +27,11 @@ class DenseRetrievalError(RetrievalError):
 
 class SparseRetrievalError(RetrievalError):
     """Raised when BM25 reconstruction/scoring or Chroma result hydration cannot be trusted."""
+
+
+class FusionError(RetrievalError):
+    """Raised by the pure RRF fusion layer: malformed input rankings or a provenance mismatch."""
+
+
+class HybridRetrievalError(RetrievalError):
+    """Raised when hybrid orchestration fails: the dense or sparse retrieval channel failed."""

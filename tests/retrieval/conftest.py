@@ -10,6 +10,7 @@ import pytest
 
 from rag_pipeline.chunking.models import Chunk, build_chunk
 from rag_pipeline.config import ChunkingStrategy, Settings
+from rag_pipeline.retrieval.models import DenseRetrievalResult, SparseRetrievalResult
 
 _HASH_EMBEDDING_DIM = 32
 
@@ -77,4 +78,59 @@ def make_chunk(
         section_heading=section_heading,
         page_number=page_number,
         strategy=strategy,
+    )
+
+
+def make_dense_result(
+    *,
+    chunk_id: str,
+    rank: int,
+    text: str | None = None,
+    distance: float = 0.1,
+    document_id: str = "d" * 64,
+    chunk_index: int = 0,
+    source_file: str = "doc.md",
+    section_heading: str | None = None,
+    page_number: int | None = None,
+    chunking_strategy: ChunkingStrategy = ChunkingStrategy.RECURSIVE,
+) -> DenseRetrievalResult:
+    return DenseRetrievalResult(
+        chunk_id=chunk_id,
+        rank=rank,
+        text=text if text is not None else f"text for {chunk_id}",
+        distance=distance,
+        similarity=1.0 - distance,
+        document_id=document_id,
+        chunk_index=chunk_index,
+        source_file=source_file,
+        section_heading=section_heading,
+        page_number=page_number,
+        chunking_strategy=chunking_strategy,
+    )
+
+
+def make_sparse_result(
+    *,
+    chunk_id: str,
+    rank: int,
+    text: str | None = None,
+    bm25_score: float = 1.0,
+    document_id: str = "d" * 64,
+    chunk_index: int = 0,
+    source_file: str = "doc.md",
+    section_heading: str | None = None,
+    page_number: int | None = None,
+    chunking_strategy: ChunkingStrategy = ChunkingStrategy.RECURSIVE,
+) -> SparseRetrievalResult:
+    return SparseRetrievalResult(
+        chunk_id=chunk_id,
+        rank=rank,
+        text=text if text is not None else f"text for {chunk_id}",
+        bm25_score=bm25_score,
+        document_id=document_id,
+        chunk_index=chunk_index,
+        source_file=source_file,
+        section_heading=section_heading,
+        page_number=page_number,
+        chunking_strategy=chunking_strategy,
     )
