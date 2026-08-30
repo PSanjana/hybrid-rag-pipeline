@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     index_batch_size: int = 500
     dedup_similarity_threshold: float = 0.95
 
+    dense_top_k: int = 10
+
     @model_validator(mode="after")
     def _validate_chunking_config(self) -> Settings:
         if self.chunk_size <= 0:
@@ -66,6 +68,12 @@ class Settings(BaseSettings):
     def _validate_dedup_config(self) -> Settings:
         if not 0.0 <= self.dedup_similarity_threshold <= 1.0:
             raise ValueError("dedup_similarity_threshold must be between 0.0 and 1.0.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_retrieval_config(self) -> Settings:
+        if self.dense_top_k <= 0:
+            raise ValueError("dense_top_k must be positive.")
         return self
 
     @property

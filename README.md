@@ -41,6 +41,15 @@ configurable chunking:
   fixed/recursive/semantic indexes coexist independently, and re-indexing an
   unchanged corpus under an unchanged configuration reuses the existing
   snapshot instead of rebuilding it (or re-embedding it).
+- Answers questions with **dense retrieval**: a question is embedded with the
+  same shared `EmbeddingProvider` used to build the index, then the active
+  Chroma snapshot for the requested chunking strategy — resolved solely from
+  its manifest, never guessed — is queried via cosine nearest-neighbor
+  search. Results are returned ranked (default top-k **10**, configurable via
+  `DENSE_TOP_K` or per-call override), each carrying its raw cosine distance,
+  a derived similarity (`1.0 - distance`), and full source provenance
+  (document, chunk index, source file, section heading/page number where
+  present). Purely read-only: no index artifact is ever mutated by a query.
 
 **Chunking strategies, conceptually:**
 - *Fixed*: slices raw character windows on a fixed stride, so overlap between
@@ -54,10 +63,9 @@ configurable chunking:
   a topic change), with a hard size cap so one uniform section can't grow
   unbounded. Requires `OPENAI_API_KEY`.
 
-**Not yet implemented:** OCR for scanned/image-only PDFs, dense query
-retrieval, sparse (BM25) query retrieval, hybrid search / Reciprocal Rank
-Fusion, reranking, grounded generation, citations, evaluation, an API, a
-frontend, and containerization.
+**Not yet implemented:** OCR for scanned/image-only PDFs, sparse (BM25) query
+retrieval, hybrid search / Reciprocal Rank Fusion, reranking, grounded
+generation, citations, evaluation, an API, a frontend, and containerization.
 
 ## Planned architecture
 
@@ -75,6 +83,10 @@ frontend, and containerization.
   build a synchronized ChromaDB dense index + BM25 sparse index from the
   resulting canonical, post-dedup chunk ordering, tracked by a deterministic
   snapshot manifest
+- **Dense retrieval** *(implemented)*: embed a question with the same shared
+  provider used at indexing time and return the top-k nearest chunks (cosine
+  distance/similarity) from the active Chroma snapshot for a chunking
+  strategy, with full source provenance
 - **Hybrid retrieval**: combine dense vector search with sparse/BM25 keyword search
 - **Reranking**: reorder merged candidates for relevance
 - **Grounded generation**: LLM answers with citation verification against sources
@@ -82,25 +94,28 @@ frontend, and containerization.
 - **API / dashboard**: expose the pipeline for querying and inspection
 - **Containerization**: package services for deployment
 
-Ingestion, chunking, deduplication, and indexing are implemented as
-described above; the remaining stages describe intent, not current
-behavior. In particular, dense query retrieval, sparse query retrieval,
-hybrid search / RRF, and reranking are not implemented yet — the index can
-be built and inspected at a low level, but there is no query-side search
-API.
+Ingestion, chunking, deduplication, indexing, and dense retrieval are
+implemented as described above; the remaining stages describe intent, not
+current behavior. In particular, sparse (BM25) query retrieval, hybrid
+search / RRF, and reranking are not implemented yet — only dense retrieval
+is available, and there is no query-side search API (FastAPI) yet, only the
+`scripts/query_dense.py` development script. No retrieval evaluation has
+been run or is claimed.
 
 ## Sample corpus
 
 `data/sample/` contains a small, **fictional/synthetic** internal-document
 corpus for a made-up company ("Acme Cloud"), used for local development and
-exercising ingestion, chunking, deduplication, and indexing end-to-end. It is not real
-company data. It is intended for future hybrid-retrieval evaluation work,
-but no retrieval or evaluation has been implemented or run against it yet.
+exercising ingestion, chunking, deduplication, indexing, and dense retrieval
+end-to-end. It is not real company data. It is intended for future
+hybrid-retrieval evaluation work, but no evaluation has been implemented or
+run against it yet.
 
 `scripts/index_sample_corpus.py` indexes this corpus with a chosen chunking
 strategy using the real OpenAI embedding provider (requires
-`OPENAI_API_KEY`); local runtime index data is written under
-`data/indexes/` (git-ignored, never `data/sample/`).
+`OPENAI_API_KEY`); `scripts/query_dense.py` then runs one dense-retrieval
+query against the resulting active snapshot. Local runtime index data is
+written under `data/indexes/` (git-ignored, never `data/sample/`).
 
 ## Local development setup
 
@@ -148,7 +163,8 @@ mypy
 - [x] Chunking (fixed, recursive, semantic)
 - [x] Near-duplicate chunk deduplication (exact + cosine-similarity, pre-indexing)
 - [x] Indexing (synchronized ChromaDB dense + BM25 sparse, per-strategy snapshots)
-- [ ] Hybrid retrieval (dense + sparse + RRF + reranking)
+- [x] Dense retrieval (cosine nearest-neighbor, top-k, source provenance)
+- [ ] Sparse (BM25) retrieval + hybrid fusion (RRF) + reranking
 - [ ] Grounded generation and citation verification
 - [ ] Evaluation
 - [ ] API / dashboard
