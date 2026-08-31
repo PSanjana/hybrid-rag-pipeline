@@ -228,10 +228,28 @@ configurable chunking:
   a topic change), with a hard size cap so one uniform section can't grow
   unbounded. Requires `OPENAI_API_KEY`.
 
-**Not yet implemented:** OCR for scanned/image-only PDFs, calibration of
-the confidence score and the abstention threshold against real data
-(both are deterministic but uncalibrated heuristics), retrieval
-evaluation, an API, a frontend, and containerization.
+**Evaluation (Phase 4).** The end-to-end answer pipeline (Phase 3) is
+complete. Phase 4 Step 1 adds a **golden evaluation dataset** — a
+hand-authored, version-controlled benchmark of **60 manually-grounded
+Q&A cases** over the committed `data/sample/` corpus
+([`data/eval/golden_qa.jsonl`](data/eval/golden_qa.jsonl), documented in
+[`data/eval/README.md`](data/eval/README.md)). Each case carries atomic
+expected facts, the exact source documents that support them, relevant
+technical identifiers, an answerable/unanswerable label, a category, and
+a difficulty. Golden truth was written by reading the corpus directly —
+never by running the pipeline — and identifies **source documents and
+facts, not chunk IDs**, so it stays stable across the fixed/recursive/
+semantic chunking comparison Phase 4 will run.
+`rag_pipeline.evaluation` loads and validates it (offline, no API key);
+`scripts/summarize_golden_dataset.py` prints its distribution.
+**No evaluation metrics are implemented and no benchmark has been run** —
+that is later Phase 4 work.
+
+**Not yet implemented:** OCR for scanned/image-only PDFs; the Phase 4
+evaluation metrics themselves (retrieval relevance, answer correctness,
+faithfulness, citation accuracy, abstention behaviour, chunking-strategy
+comparison) and any calibration of the confidence score or abstention
+threshold; an API; a frontend; and containerization.
 
 ## Planned architecture
 
@@ -281,7 +299,12 @@ evaluation, an API, a frontend, and containerization.
   `"I don't know"` decision via a fixed precedence and one configurable
   `confidence_threshold` (default 0.8, uncalibrated); Phase 4 evaluation
   will tune the threshold and the Step 3 weights
-- **Evaluation**: measure retrieval and answer quality
+- **Evaluation** *(dataset only)*: a hand-authored golden Q&A benchmark
+  over the sample corpus exists (`data/eval/golden_qa.jsonl`, loaded and
+  validated by `rag_pipeline.evaluation`); the metrics that will consume
+  it — retrieval relevance, answer correctness, faithfulness, citation
+  accuracy, abstention behaviour, chunking-strategy comparison — are not
+  implemented, and no benchmark has been run
 - **API / dashboard**: expose the pipeline for querying and inspection
 - **Containerization**: package services for deployment
 
@@ -289,16 +312,18 @@ Ingestion, chunking, deduplication, indexing, dense retrieval, sparse
 retrieval, hybrid RRF fusion, reranking, grounded generation with
 bracketed citations, semantic citation verification, deterministic
 confidence scoring, and the deterministic abstention policy are
-implemented as described above; the remaining stages describe intent,
-not current behavior. In particular, the confidence score and the
-abstention `confidence_threshold` are deterministic but **uncalibrated**
-heuristics — no evaluation has tuned them — and there is no query-side
-search API (FastAPI) yet, only the `scripts/query_dense.py`,
+implemented as described above, and a manually-grounded golden
+evaluation dataset (≥ 50 cases) has been authored; the remaining stages
+describe intent, not current behavior. In particular, the confidence
+score and the abstention `confidence_threshold` are deterministic but
+**uncalibrated** heuristics — no evaluation metric has been run against
+the golden dataset and no scores are claimed — and there is no
+query-side search API (FastAPI) yet, only the `scripts/query_dense.py`,
 `scripts/query_sparse.py`, `scripts/query_hybrid.py`,
 `scripts/query_reranked.py`, `scripts/ask_grounded.py`,
-`scripts/ask_verified.py`, `scripts/ask_with_confidence.py`, and
-`scripts/ask_final.py` development scripts. No retrieval evaluation has
-been run or is claimed.
+`scripts/ask_verified.py`, `scripts/ask_with_confidence.py`,
+`scripts/ask_final.py`, and `scripts/summarize_golden_dataset.py`
+development scripts.
 
 ## Sample corpus
 
@@ -307,9 +332,9 @@ corpus for a made-up company ("Acme Cloud"), used for local development and
 exercising ingestion, chunking, deduplication, indexing, and dense/sparse/
 hybrid/reranked retrieval, grounded generation, citation verification,
 confidence scoring, and the abstention policy end-to-end. It is not real
-company data. It is intended for future
-retrieval evaluation work, but no evaluation has been implemented or run
-against it yet.
+company data. The Phase 4 golden evaluation dataset
+([`data/eval/golden_qa.jsonl`](data/eval/golden_qa.jsonl)) is grounded in
+this corpus; evaluation metrics over it are not implemented yet.
 
 `scripts/index_sample_corpus.py` indexes this corpus with a chosen chunking
 strategy using the real OpenAI embedding provider (requires
@@ -397,6 +422,7 @@ mypy
 - [x] Citation semantic verification (per-occurrence LLM-judge support verdicts)
 - [x] Deterministic confidence scoring (citation-support verdicts + retrieval-channel agreement; heuristic signal, not calibrated)
 - [x] Deterministic abstention policy (fixed precedence + `confidence_threshold`; graceful "I don't know", uncalibrated threshold)
-- [ ] Evaluation (and confidence-score / abstention-threshold calibration/tuning)
+- [x] Golden evaluation dataset (≥ 50 manually-grounded Q&A cases over the sample corpus; Phase 4 Step 1)
+- [ ] Evaluation metrics over the golden dataset (retrieval / correctness / faithfulness / citation / abstention; chunking-strategy comparison; threshold + weight calibration)
 - [ ] API / dashboard
 - [ ] Containerization and portfolio polish
