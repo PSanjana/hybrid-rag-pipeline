@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     # confidence_* component weights.
     confidence_threshold: float = 0.8
 
+    # Phase 4 Step 2 evaluation metrics. The semantic correctness/faithfulness
+    # judges use their own model setting so it can be pinned or upgraded
+    # independently of generation/citation judging later. Same default as
+    # the others for now -- a single deliberate choice, not a duplication.
+    evaluation_judge_model: str = "gpt-5.6-terra"
+
     @model_validator(mode="after")
     def _validate_chunking_config(self) -> Settings:
         if self.chunk_size <= 0:
@@ -142,6 +148,12 @@ class Settings(BaseSettings):
             raise ValueError("generation_model must not be empty.")
         if not self.citation_judge_model.strip():
             raise ValueError("citation_judge_model must not be empty.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_evaluation_config(self) -> Settings:
+        if not self.evaluation_judge_model.strip():
+            raise ValueError("evaluation_judge_model must not be empty.")
         return self
 
     @model_validator(mode="after")

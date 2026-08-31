@@ -242,14 +242,34 @@ facts, not chunk IDs**, so it stays stable across the fixed/recursive/
 semantic chunking comparison Phase 4 will run.
 `rag_pipeline.evaluation` loads and validates it (offline, no API key);
 `scripts/summarize_golden_dataset.py` prints its distribution.
-**No evaluation metrics are implemented and no benchmark has been run** —
-that is later Phase 4 work.
 
-**Not yet implemented:** OCR for scanned/image-only PDFs; the Phase 4
-evaluation metrics themselves (retrieval relevance, answer correctness,
-faithfulness, citation accuracy, abstention behaviour, chunking-strategy
-comparison) and any calibration of the confidence score or abstention
-threshold; an API; a frontend; and containerization.
+Phase 4 Step 2 adds the **evaluation metrics** that consume the dataset —
+**measurement only**: five orthogonal families with no single combined
+score. *Retrieval relevance* (required-source Hit@k / Recall@k /
+Complete@k, reciprocal rank, identifier recall@k), *citation accuracy*
+(semantic support, fully-supported rate, golden-source match, required-
+source citation recall) and *abstention behaviour* (policy answer/abstain
+decision vs golden answerability) are **fully deterministic** — no LLM,
+and never read a native retrieval score or the confidence score.
+*Answer correctness* (does the answer cover the golden facts?) and
+*faithfulness* (are the answer's claims supported by the evidence given
+to generation?) use an injectable semantic judge that only **classifies**
+each fact/claim; deterministic Python maps verdicts to scores and takes
+the mean. Correctness produces two signals: `expected_fact_score` (the
+coverage mean over the numbered golden facts) and `has_golden_contradiction`
+(whether the answer adds a material claim that *conflicts* with the golden
+truth — a claim merely *absent* from the non-exhaustive benchmark is not a
+contradiction); no numeric penalty is combined in here. Correctness and
+faithfulness are kept separate (the golden answer is never shown to the
+faithfulness judge; retrieved evidence is never shown to the correctness
+judge). A genuinely non-applicable metric is `None`, never `0.0`. **No
+benchmark has been run, no chunking strategies have been compared, and no
+weight or threshold has been tuned** — and no scores are claimed anywhere.
+
+**Not yet implemented:** OCR for scanned/image-only PDFs; the **Phase 4
+Step 3** benchmark run itself (executing the metrics over all 60 cases and
+all three chunking strategies) and any calibration of the confidence score
+or abstention threshold; an API; a frontend; and containerization.
 
 ## Planned architecture
 
@@ -299,12 +319,17 @@ threshold; an API; a frontend; and containerization.
   `"I don't know"` decision via a fixed precedence and one configurable
   `confidence_threshold` (default 0.8, uncalibrated); Phase 4 evaluation
   will tune the threshold and the Step 3 weights
-- **Evaluation** *(dataset only)*: a hand-authored golden Q&A benchmark
-  over the sample corpus exists (`data/eval/golden_qa.jsonl`, loaded and
-  validated by `rag_pipeline.evaluation`); the metrics that will consume
-  it — retrieval relevance, answer correctness, faithfulness, citation
-  accuracy, abstention behaviour, chunking-strategy comparison — are not
-  implemented, and no benchmark has been run
+- **Evaluation** *(dataset + metric definitions)*: a hand-authored golden
+  Q&A benchmark over the sample corpus (`data/eval/golden_qa.jsonl`,
+  loaded and validated by `rag_pipeline.evaluation`), plus five
+  orthogonal, independently-tested **metric functions** in
+  `rag_pipeline.evaluation.metrics` — retrieval relevance, answer
+  correctness (expected-fact coverage **plus** an answer-level
+  golden-contradiction flag), faithfulness, citation accuracy, and
+  abstention behaviour (`None` for non-applicable, never `0.0`). The
+  **Phase 4 Step 3** benchmark run (all cases × all chunking strategies),
+  the chunking-strategy comparison, and threshold/weight calibration are
+  still to come, and no scores exist yet
 - **API / dashboard**: expose the pipeline for querying and inspection
 - **Containerization**: package services for deployment
 
@@ -312,12 +337,15 @@ Ingestion, chunking, deduplication, indexing, dense retrieval, sparse
 retrieval, hybrid RRF fusion, reranking, grounded generation with
 bracketed citations, semantic citation verification, deterministic
 confidence scoring, and the deterministic abstention policy are
-implemented as described above, and a manually-grounded golden
-evaluation dataset (≥ 50 cases) has been authored; the remaining stages
-describe intent, not current behavior. In particular, the confidence
-score and the abstention `confidence_threshold` are deterministic but
-**uncalibrated** heuristics — no evaluation metric has been run against
-the golden dataset and no scores are claimed — and there is no
+implemented as described above; a manually-grounded golden evaluation
+dataset (≥ 50 cases) has been authored, and the five orthogonal
+evaluation-metric functions that consume it are implemented and
+independently tested (measurement only). The remaining stages describe
+intent, not current behavior. In particular, the confidence score and the
+abstention `confidence_threshold` are deterministic but **uncalibrated**
+heuristics — the metrics have never been run over the golden dataset, no
+chunking strategies have been compared, and no scores are claimed — and
+there is no
 query-side search API (FastAPI) yet, only the `scripts/query_dense.py`,
 `scripts/query_sparse.py`, `scripts/query_hybrid.py`,
 `scripts/query_reranked.py`, `scripts/ask_grounded.py`,
@@ -423,6 +451,7 @@ mypy
 - [x] Deterministic confidence scoring (citation-support verdicts + retrieval-channel agreement; heuristic signal, not calibrated)
 - [x] Deterministic abstention policy (fixed precedence + `confidence_threshold`; graceful "I don't know", uncalibrated threshold)
 - [x] Golden evaluation dataset (≥ 50 manually-grounded Q&A cases over the sample corpus; Phase 4 Step 1)
-- [ ] Evaluation metrics over the golden dataset (retrieval / correctness / faithfulness / citation / abstention; chunking-strategy comparison; threshold + weight calibration)
+- [x] Evaluation metric definitions (retrieval / correctness — expected-fact coverage + golden-contradiction flag / faithfulness / citation / abstention; orthogonal, `None` ≠ `0.0`, offline-testable; Phase 4 Step 2 — measurement only)
+- [ ] Phase 4 Step 3 — benchmark run over the golden dataset (all cases × fixed/recursive/semantic; chunking-strategy comparison; threshold + weight calibration)
 - [ ] API / dashboard
 - [ ] Containerization and portfolio polish

@@ -51,3 +51,15 @@ def test_settings_module_import_does_not_require_env_vars() -> None:
     for key in ("ENVIRONMENT", "LOG_LEVEL", "OPENAI_API_KEY"):
         assert key not in os.environ
     Settings(_env_file=None)
+
+
+def test_evaluation_judge_model_default_and_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert Settings(_env_file=None).evaluation_judge_model == "gpt-5.6-terra"
+
+    monkeypatch.setenv("EVALUATION_JUDGE_MODEL", "eval-model-x")
+    assert Settings(_env_file=None).evaluation_judge_model == "eval-model-x"
+
+
+def test_blank_evaluation_judge_model_is_rejected() -> None:
+    with pytest.raises(ValueError, match="evaluation_judge_model must not be empty"):
+        Settings(_env_file=None, evaluation_judge_model="   ")
