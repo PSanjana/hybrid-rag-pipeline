@@ -121,8 +121,9 @@ configurable chunking:
   silently accepted — both raise a clear error instead of being repaired
   or hidden. If the evidence genuinely doesn't answer the question, the
   model is instructed to say so explicitly rather than guess; this is the
-  generation instruction and response *form* only, not a finished
-  confidence/abstention system (see Roadmap). A retrieval failure during
+  generation instruction and response *form* only — recognizing it and
+  deciding what to do with it is the job of the separate confidence and
+  abstention layers below. A retrieval failure during
   `retrieve_and_generate()` is surfaced, never silently answered without
   evidence.
 - Semantically verifies citations with an **LLM judge**:
@@ -182,6 +183,38 @@ configurable chunking:
   same underlying stages (it calls `retrieve_reranked()` directly to keep
   the intermediate results the agreement component needs) and duplicating
   none of them.
+- Makes a final **deterministic abstention decision** in a **separate
+  policy layer**: `apply_abstention_policy()` consumes the already-computed
+  `GroundedAnswer`, `CitationVerificationReport`, and `ConfidenceAssessment`
+  (it recomputes **no** retrieval, generation, verification, or confidence)
+  and returns a `FinalAnswer` carrying an `AnswerDecision` enum. The
+  precedence is fixed and order-sensitive: **(1)** the generator emitted
+  the canonical insufficient-evidence response → `ABSTAINED_INSUFFICIENT_EVIDENCE`;
+  **(2)** any citation was verified `CONTRADICTED` → `ABSTAINED_CONTRADICTION`;
+  **(3)** any citation was verified `UNSUPPORTED` → `ABSTAINED_UNSUPPORTED_CITATION`;
+  **(4)** `confidence.score < confidence_threshold` (default **0.8**) →
+  `ABSTAINED_LOW_CONFIDENCE`; **(5)** otherwise → `ANSWERED`. A
+  *partially*-supported citation on its own never forces abstention — a
+  partial verdict already lowers the Step 3 citation-support component, so
+  rule 4's threshold decides whether such an answer still passes. On
+  `ANSWERED` the grounded answer text is returned **verbatim** (no
+  rewrite, no citation edits, no appended metadata); on any abstention
+  the user-facing text is a single fixed sentence
+  (`"I don't have enough reliable information in the supplied documents to
+  answer that confidently."`) that never mentions scores, retrieval
+  algorithms, or judge verdicts, and the rejected draft is retained only
+  on `FinalAnswer.grounded_answer` for debugging/evaluation. The policy
+  is a trust boundary too: it re-checks the handful of fields it relies
+  on (score finite and in `[0, 1]`, citation counts vs the verification
+  report, contradiction flag vs count, insufficiency flag vs the answer's
+  canonical form, threshold valid) and raises `AbstentionPolicyInputError`
+  rather than decide from a contradictory hand-built trio.
+  `answer_question_with_policy()` composes
+  `retrieve_generate_verify_and_score()` (called **once**) with the policy.
+  The **0.8 threshold is an initial uncalibrated heuristic**; Phase 4
+  evaluation is expected to tune it (and the Step 3 component weights) —
+  it is a distinct policy setting and never reuses the `confidence_*`
+  weights.
 
 **Chunking strategies, conceptually:**
 - *Fixed*: slices raw character windows on a fixed stride, so overlap between
@@ -195,12 +228,10 @@ configurable chunking:
   a topic change), with a hard size cap so one uniform section can't grow
   unbounded. Requires `OPENAI_API_KEY`.
 
-**Not yet implemented:** OCR for scanned/image-only PDFs, a final formal
-"I don't know"/abstention policy (the deterministic `ConfidenceAssessment`
-is a signal only — nothing yet turns it or the verification verdicts into
-an accept/reject/suppress decision), calibration of confidence behavior
-against real data, retrieval evaluation, an API, a frontend, and
-containerization.
+**Not yet implemented:** OCR for scanned/image-only PDFs, calibration of
+the confidence score and the abstention threshold against real data
+(both are deterministic but uncalibrated heuristics), retrieval
+evaluation, an API, a frontend, and containerization.
 
 ## Planned architecture
 
@@ -244,36 +275,39 @@ containerization.
   for the cited evidence into one deterministic, decomposable
   `ConfidenceAssessment` — a heuristic quality signal, not a calibrated
   probability
-- **Abstention policy**: turn the confidence assessment (and its
-  contradiction signal) into a final "I don't know" / accept / reject
-  decision; Phase 4 evaluation will be used to tune and calibrate this
-  behavior
+- **Abstention policy** *(implemented)*: a separate deterministic layer
+  turns the confidence assessment (plus the insufficiency, contradiction,
+  and unsupported-citation signals) into a final `ANSWERED` / graceful
+  `"I don't know"` decision via a fixed precedence and one configurable
+  `confidence_threshold` (default 0.8, uncalibrated); Phase 4 evaluation
+  will tune the threshold and the Step 3 weights
 - **Evaluation**: measure retrieval and answer quality
 - **API / dashboard**: expose the pipeline for querying and inspection
 - **Containerization**: package services for deployment
 
 Ingestion, chunking, deduplication, indexing, dense retrieval, sparse
 retrieval, hybrid RRF fusion, reranking, grounded generation with
-bracketed citations, semantic citation verification, and deterministic
-confidence scoring are implemented as described above; the remaining
-stages describe intent, not current behavior. In particular, a final
-formal abstention policy is not implemented yet — `ConfidenceAssessment`
-is a heuristic signal and `CitationVerificationReport` a factual verdict
-tally, and nothing yet turns either into an accept/reject decision — and
-there is no query-side search API (FastAPI) yet — only the
-`scripts/query_dense.py`, `scripts/query_sparse.py`,
-`scripts/query_hybrid.py`, `scripts/query_reranked.py`,
-`scripts/ask_grounded.py`, `scripts/ask_verified.py`, and
-`scripts/ask_with_confidence.py` development scripts. No retrieval
-evaluation has been run or is claimed.
+bracketed citations, semantic citation verification, deterministic
+confidence scoring, and the deterministic abstention policy are
+implemented as described above; the remaining stages describe intent,
+not current behavior. In particular, the confidence score and the
+abstention `confidence_threshold` are deterministic but **uncalibrated**
+heuristics — no evaluation has tuned them — and there is no query-side
+search API (FastAPI) yet, only the `scripts/query_dense.py`,
+`scripts/query_sparse.py`, `scripts/query_hybrid.py`,
+`scripts/query_reranked.py`, `scripts/ask_grounded.py`,
+`scripts/ask_verified.py`, `scripts/ask_with_confidence.py`, and
+`scripts/ask_final.py` development scripts. No retrieval evaluation has
+been run or is claimed.
 
 ## Sample corpus
 
 `data/sample/` contains a small, **fictional/synthetic** internal-document
 corpus for a made-up company ("Acme Cloud"), used for local development and
 exercising ingestion, chunking, deduplication, indexing, and dense/sparse/
-hybrid/reranked retrieval, grounded generation, and citation verification
-end-to-end. It is not real company data. It is intended for future
+hybrid/reranked retrieval, grounded generation, citation verification,
+confidence scoring, and the abstention policy end-to-end. It is not real
+company data. It is intended for future
 retrieval evaluation work, but no evaluation has been implemented or run
 against it yet.
 
@@ -281,21 +315,26 @@ against it yet.
 strategy using the real OpenAI embedding provider (requires
 `OPENAI_API_KEY`); `scripts/query_dense.py`, `scripts/query_sparse.py`,
 `scripts/query_hybrid.py`, `scripts/query_reranked.py`,
-`scripts/ask_grounded.py`, `scripts/ask_verified.py`, and
-`scripts/ask_with_confidence.py` then run one dense-, sparse-, hybrid-,
-reranked-, grounded-generation, grounded-generation-plus-verification, or
-grounded-generation-plus-verification-plus-confidence query against the
-resulting active snapshot (`query_sparse.py` needs no API key — sparse
-retrieval never touches embeddings; the rest need one, since they call
-the dense channel too, and `ask_grounded.py`/`ask_verified.py`/
-`ask_with_confidence.py` additionally call the OpenAI generation model,
-with `ask_verified.py`/`ask_with_confidence.py` also calling the OpenAI
-citation judge; `query_reranked.py`, `ask_grounded.py`,
-`ask_verified.py`, and `ask_with_confidence.py` also require the optional
-`sentence-transformers` extra and download its cross-encoder model on
-first use). `ask_with_confidence.py` labels its output a *heuristic
-confidence score*, never a percentage chance of correctness. Local runtime index data is written
-under `data/indexes/` (git-ignored, never `data/sample/`).
+`scripts/ask_grounded.py`, `scripts/ask_verified.py`,
+`scripts/ask_with_confidence.py`, and `scripts/ask_final.py` then run one
+dense-, sparse-, hybrid-, reranked-, grounded-generation,
+grounded-generation-plus-verification,
+grounded-generation-plus-verification-plus-confidence, or
+full-pipeline-plus-abstention-decision query against the resulting active
+snapshot (`query_sparse.py` needs no API key — sparse retrieval never
+touches embeddings; the rest need one, since they call the dense channel
+too, and `ask_grounded.py`/`ask_verified.py`/`ask_with_confidence.py`/
+`ask_final.py` additionally call the OpenAI generation model, with
+`ask_verified.py`/`ask_with_confidence.py`/`ask_final.py` also calling the
+OpenAI citation judge; `query_reranked.py`, `ask_grounded.py`,
+`ask_verified.py`, `ask_with_confidence.py`, and `ask_final.py` also
+require the optional `sentence-transformers` extra and download its
+cross-encoder model on first use). `ask_with_confidence.py` labels its
+output a *heuristic confidence score*, never a percentage chance of
+correctness; `ask_final.py` prints only the final user-facing answer by
+default (either the grounded answer or the fixed abstention sentence) and
+shows the decision/score/counts only with `--debug`. Local runtime index
+data is written under `data/indexes/` (git-ignored, never `data/sample/`).
 
 ## Local development setup
 
@@ -357,7 +396,7 @@ mypy
 - [x] Grounded generation (answer from reranked evidence only, bracketed `[n]` citations)
 - [x] Citation semantic verification (per-occurrence LLM-judge support verdicts)
 - [x] Deterministic confidence scoring (citation-support verdicts + retrieval-channel agreement; heuristic signal, not calibrated)
-- [ ] A final formal abstention ("I don't know") / accept / reject policy
-- [ ] Evaluation (and confidence calibration/tuning)
+- [x] Deterministic abstention policy (fixed precedence + `confidence_threshold`; graceful "I don't know", uncalibrated threshold)
+- [ ] Evaluation (and confidence-score / abstention-threshold calibration/tuning)
 - [ ] API / dashboard
 - [ ] Containerization and portfolio polish

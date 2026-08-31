@@ -38,10 +38,24 @@ correctness, and not an accept/reject decision. `is_insufficient_evidence_answer
 only recognizes the literal response form the system prompt asks for;
 it is not a semantic judge, and neither citation verification nor
 confidence scoring here decide overall answer trustworthiness or
-acceptance -- that final abstention ("I don't know") policy is Phase 3
-Step 4's job, not this package's.
+acceptance.
+
+`apply_abstention_policy()` (Phase 3 Step 4) is the final, POLICY-ONLY
+layer: it consumes the already-computed `GroundedAnswer`,
+`CitationVerificationReport`, and `ConfidenceAssessment` and makes one
+deterministic decision -- return the grounded answer unchanged, or
+replace it with the fixed `ABSTENTION_TEXT` -- following a fixed
+precedence (insufficiency > contradiction > unsupported citation >
+score below `Settings.confidence_threshold`). It recomputes none of the
+earlier stages. `answer_question_with_policy()` composes
+`retrieve_generate_verify_and_score()` (once) with the policy.
 """
 
+from .abstention import (
+    ABSTENTION_TEXT,
+    answer_question_with_policy,
+    apply_abstention_policy,
+)
 from .base import CitationJudge, Generator, RawJudgeVerdict
 from .citations import (
     extract_citation_occurrences,
@@ -53,6 +67,7 @@ from .citations import (
 from .confidence import retrieve_generate_verify_and_score, score_confidence
 from .context import build_evidence, format_evidence_block
 from .exceptions import (
+    AbstentionPolicyInputError,
     CitationJudgeError,
     CitationJudgeOutputError,
     CitationValidationError,
@@ -65,12 +80,14 @@ from .exceptions import (
 )
 from .judge_prompt import JUDGE_SYSTEM_PROMPT, annotate_answer, build_judge_user_prompt
 from .models import (
+    AnswerDecision,
     CitationOccurrence,
     CitationVerdict,
     CitationVerification,
     CitationVerificationReport,
     ConfidenceAssessment,
     Evidence,
+    FinalAnswer,
     GroundedAnswer,
 )
 from .openai import OpenAIGenerator
@@ -80,8 +97,11 @@ from .service import generate_grounded_answer, retrieve_and_generate
 from .verification import retrieve_generate_and_verify, verify_grounded_answer
 
 __all__ = [
+    "ABSTENTION_TEXT",
     "JUDGE_SYSTEM_PROMPT",
     "SYSTEM_PROMPT",
+    "AbstentionPolicyInputError",
+    "AnswerDecision",
     "CitationJudge",
     "CitationJudgeError",
     "CitationJudgeOutputError",
@@ -93,6 +113,7 @@ __all__ = [
     "ConfidenceAssessment",
     "ConfidenceInputError",
     "Evidence",
+    "FinalAnswer",
     "GenerationError",
     "GenerationProviderError",
     "Generator",
@@ -104,6 +125,8 @@ __all__ = [
     "RetrieveAndGenerateError",
     "UncitedAnswerError",
     "annotate_answer",
+    "answer_question_with_policy",
+    "apply_abstention_policy",
     "build_evidence",
     "build_judge_user_prompt",
     "build_user_prompt",

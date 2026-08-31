@@ -71,6 +71,15 @@ class Settings(BaseSettings):
     confidence_citation_weight: float = 0.9
     confidence_retrieval_agreement_weight: float = 0.1
 
+    # Phase 3 Step 4 abstention policy. An initial UNCALIBRATED heuristic
+    # cut-off: an answer whose deterministic ConfidenceAssessment.score is
+    # below this (and which no stronger rule -- insufficiency, contradiction,
+    # unsupported citation -- already rejected) is replaced by the canonical
+    # "I don't know" response. Phase 4 evaluation is expected to tune this;
+    # it is deliberately a separate policy setting, never reusing the Step 3
+    # confidence_* component weights.
+    confidence_threshold: float = 0.8
+
     @model_validator(mode="after")
     def _validate_chunking_config(self) -> Settings:
         if self.chunk_size <= 0:
@@ -154,6 +163,14 @@ class Settings(BaseSettings):
                 "At least one of confidence_citation_weight/"
                 "confidence_retrieval_agreement_weight must be positive."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_abstention_config(self) -> Settings:
+        if not math.isfinite(self.confidence_threshold):
+            raise ValueError("confidence_threshold must be finite (no NaN/inf).")
+        if not 0.0 <= self.confidence_threshold <= 1.0:
+            raise ValueError("confidence_threshold must be between 0.0 and 1.0 inclusive.")
         return self
 
     @property

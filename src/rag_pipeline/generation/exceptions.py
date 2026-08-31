@@ -41,3 +41,16 @@ class ConfidenceInputError(GenerationError):
     clearly rather than compute a misleading score from inconsistent or
     incomplete data.
     """
+
+
+class AbstentionPolicyInputError(GenerationError):
+    """Raised when the abstention policy's inputs are mutually inconsistent or out of range.
+
+    The Phase 3 Step 4 policy layer is another trust boundary: it
+    re-checks only the `ConfidenceAssessment`/`CitationVerificationReport`/
+    `GroundedAnswer` fields the decision actually depends on (score
+    finiteness/range, citation counts vs the report, contradiction
+    flag/count, insufficiency flag vs the answer's canonical form, and
+    the configured threshold) and refuses to decide from a hand-built
+    contradictory trio rather than emit a misleading FinalAnswer.
+    """

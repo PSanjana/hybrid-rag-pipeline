@@ -239,3 +239,58 @@ class ConfidenceAssessment:
     is_insufficient_evidence: bool
     citation_weight: float
     retrieval_agreement_weight: float
+
+
+class AnswerDecision(StrEnum):
+    """The deterministic final disposition of one answered question (Phase 3 Step 4).
+
+    The authoritative decision state -- never a free-text reason string.
+    Exactly one value is chosen per question by `abstention.apply_abstention_policy`,
+    following a fixed precedence (insufficiency > contradiction >
+    unsupported citation > low confidence > answered).
+    """
+
+    ANSWERED = "answered"
+    """The grounded substantive answer is returned unchanged."""
+
+    ABSTAINED_INSUFFICIENT_EVIDENCE = "abstained_insufficient_evidence"
+    """The generator itself produced the canonical insufficient-evidence
+    response (`ConfidenceAssessment.is_insufficient_evidence`)."""
+
+    ABSTAINED_CONTRADICTION = "abstained_contradiction"
+    """At least one citation occurrence was verified CONTRADICTED."""
+
+    ABSTAINED_UNSUPPORTED_CITATION = "abstained_unsupported_citation"
+    """At least one citation occurrence was verified UNSUPPORTED (and none
+    CONTRADICTED)."""
+
+    ABSTAINED_LOW_CONFIDENCE = "abstained_low_confidence"
+    """No stronger rule fired, but `ConfidenceAssessment.score` was below
+    `Settings.confidence_threshold`."""
+
+
+@dataclass(frozen=True, slots=True)
+class FinalAnswer:
+    """The user-facing outcome of one question, after the deterministic abstention policy.
+
+    `answer_text` is the ONLY field meant for the end user: it is either
+    `grounded_answer.answer_text` verbatim (when `decision is
+    AnswerDecision.ANSWERED`) or the fixed `abstention.ABSTENTION_TEXT`
+    (for any abstention) -- never a rewrite, summary, or a mix. The
+    original `grounded_answer` is retained even when abstaining, for
+    debugging/evaluation only, and must not be shown to the user in that
+    case. `verification_report` and `confidence` are the exact Step 2 /
+    Step 3 artifacts the decision was made from -- carried through
+    unchanged, not recomputed. `abstention_reason` is short
+    enum-derived display/debug text (never a confidence score or a
+    retrieval-algorithm name); it is `None` iff `decision is
+    AnswerDecision.ANSWERED`.
+    """
+
+    answer_text: str
+    decision: AnswerDecision
+    grounded_answer: GroundedAnswer
+    verification_report: CitationVerificationReport
+    confidence: ConfidenceAssessment
+    abstained: bool
+    abstention_reason: str | None = None
