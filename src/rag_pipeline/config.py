@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from enum import StrEnum
 from pathlib import Path
 
@@ -67,6 +68,9 @@ class Settings(BaseSettings):
     # setting so the judge model can be tuned independently later.
     citation_judge_model: str = "gpt-5.6-terra"
 
+    confidence_citation_weight: float = 0.9
+    confidence_retrieval_agreement_weight: float = 0.1
+
     @model_validator(mode="after")
     def _validate_chunking_config(self) -> Settings:
         if self.chunk_size <= 0:
@@ -129,6 +133,27 @@ class Settings(BaseSettings):
             raise ValueError("generation_model must not be empty.")
         if not self.citation_judge_model.strip():
             raise ValueError("citation_judge_model must not be empty.")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_confidence_config(self) -> Settings:
+        # Finiteness is checked first: NaN/+inf/-inf would slip past the
+        # `< 0` and `sum <= 0` comparisons below (all of which are False
+        # for NaN), and a non-finite weight would break the `[0, 1]`
+        # guarantee documented on ConfidenceAssessment.
+        if not math.isfinite(self.confidence_citation_weight):
+            raise ValueError("confidence_citation_weight must be finite (no NaN/inf).")
+        if not math.isfinite(self.confidence_retrieval_agreement_weight):
+            raise ValueError("confidence_retrieval_agreement_weight must be finite (no NaN/inf).")
+        if self.confidence_citation_weight < 0:
+            raise ValueError("confidence_citation_weight must not be negative.")
+        if self.confidence_retrieval_agreement_weight < 0:
+            raise ValueError("confidence_retrieval_agreement_weight must not be negative.")
+        if self.confidence_citation_weight + self.confidence_retrieval_agreement_weight <= 0:
+            raise ValueError(
+                "At least one of confidence_citation_weight/"
+                "confidence_retrieval_agreement_weight must be positive."
+            )
         return self
 
     @property

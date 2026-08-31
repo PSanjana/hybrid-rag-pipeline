@@ -198,3 +198,44 @@ class CitationVerificationReport:
         this property.
         """
         return all(v.verdict is CitationVerdict.SUPPORTED for v in self.verifications)
+
+
+@dataclass(frozen=True, slots=True)
+class ConfidenceAssessment:
+    """A deterministic, decomposable HEURISTIC quality signal for one `GroundedAnswer`.
+
+    NOT a calibrated probability, NOT a percentage chance of
+    correctness, and NOT an accept/reject decision -- Phase 3 Step 4
+    owns that policy. `score` combines two components (see
+    `confidence.score_confidence` for the exact formula):
+    `citation_support_score` (semantic citation-support verdicts,
+    dominant by default) and `retrieval_agreement_score` (weak
+    corroborating dense+sparse dual-channel agreement for the evidence
+    actually cited). `citation_weight`/`retrieval_agreement_weight`
+    record the exact weights used to compute `score`, for
+    observability/debugging -- not a claim that different weights would
+    be "more correct."
+
+    `score`, `citation_support_score`, and `retrieval_agreement_score`
+    are guaranteed to fall within `[0.0, 1.0]` by construction: each is
+    either a `count / total` ratio with `0 <= count <= total`, or (for
+    `score`) a weighted average of two such ratios with non-negative
+    weights -- a convex combination of values in `[0, 1]` is always
+    itself in `[0, 1]`. Nothing here clamps a value after the fact;
+    the range is a mathematical property of how each value is computed.
+    """
+
+    score: float
+    citation_support_score: float
+    retrieval_agreement_score: float
+    supported_count: int
+    partially_supported_count: int
+    unsupported_count: int
+    contradicted_count: int
+    total_citation_occurrences: int
+    unique_cited_evidence_count: int
+    dual_channel_cited_evidence_count: int
+    has_contradiction: bool
+    is_insufficient_evidence: bool
+    citation_weight: float
+    retrieval_agreement_weight: float

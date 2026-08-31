@@ -31,3 +31,13 @@ class CitationJudgeError(GenerationError):
 
 class CitationJudgeOutputError(GenerationError):
     """Raised when a judge's output doesn't exactly match the expected occurrence set."""
+
+
+class ConfidenceInputError(GenerationError):
+    """Raised when a GroundedAnswer/CitationVerificationReport/retrieval-result set is malformed.
+
+    Confidence scoring is a trust boundary: it never assumes its inputs
+    were produced by the pipeline's own earlier stages, and fails
+    clearly rather than compute a misleading score from inconsistent or
+    incomplete data.
+    """

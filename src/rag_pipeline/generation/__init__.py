@@ -28,12 +28,18 @@ zero-citation insufficient-evidence response), so it is NOT by itself
 sufficient for any future confidence/acceptance judgment: that would
 also need to inspect `total_occurrences` and whether the answer is the
 recognized insufficiency response (`is_insufficient_evidence_answer()`).
-Confidence scoring and a final abstention ("I don't know") policy are
-later pipeline stages and are not implemented here --
-`is_insufficient_evidence_answer()` only recognizes the literal response
-form the system prompt asks for; it is not a semantic judge, and
-citation verification here checks *support*, not overall answer
-trustworthiness or acceptance.
+`score_confidence()` goes one step further: it combines the
+verification report's verdicts (dominant, default weight 0.9) with weak
+corroborating dense+sparse dual-channel retrieval agreement for the
+evidence actually cited (default weight 0.1) into one deterministic,
+decomposable `ConfidenceAssessment`. This is a HEURISTIC QUALITY SIGNAL
+-- explicitly not a calibrated probability, not a percentage chance of
+correctness, and not an accept/reject decision. `is_insufficient_evidence_answer()`
+only recognizes the literal response form the system prompt asks for;
+it is not a semantic judge, and neither citation verification nor
+confidence scoring here decide overall answer trustworthiness or
+acceptance -- that final abstention ("I don't know") policy is Phase 3
+Step 4's job, not this package's.
 """
 
 from .base import CitationJudge, Generator, RawJudgeVerdict
@@ -44,11 +50,13 @@ from .citations import (
     validate_citations,
     validate_evidence_numbering,
 )
+from .confidence import retrieve_generate_verify_and_score, score_confidence
 from .context import build_evidence, format_evidence_block
 from .exceptions import (
     CitationJudgeError,
     CitationJudgeOutputError,
     CitationValidationError,
+    ConfidenceInputError,
     GenerationError,
     GenerationProviderError,
     InvalidGenerationInputError,
@@ -61,6 +69,7 @@ from .models import (
     CitationVerdict,
     CitationVerification,
     CitationVerificationReport,
+    ConfidenceAssessment,
     Evidence,
     GroundedAnswer,
 )
@@ -81,6 +90,8 @@ __all__ = [
     "CitationVerdict",
     "CitationVerification",
     "CitationVerificationReport",
+    "ConfidenceAssessment",
+    "ConfidenceInputError",
     "Evidence",
     "GenerationError",
     "GenerationProviderError",
@@ -104,6 +115,8 @@ __all__ = [
     "resolve_citation",
     "retrieve_and_generate",
     "retrieve_generate_and_verify",
+    "retrieve_generate_verify_and_score",
+    "score_confidence",
     "validate_citations",
     "validate_evidence_numbering",
     "verify_grounded_answer",
